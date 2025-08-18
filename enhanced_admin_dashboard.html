@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Ghost Publisher - Enhanced Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .status-healthy { color: #28a745; }
+        .status-degraded { color: #ffc107; }
+        .status-unhealthy { color: #dc3545; }
+        .card-stat:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+        .api-status {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .api-healthy { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .api-error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        .api-warning { background-color: #fff3cd; border: 1px solid #ffeaa7; }
+        .log-output {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 1rem;
+            border-radius: 0.25rem;
+        }
+        .pipeline-stage {
+            border: 2px solid #e9ecef;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s;
+        }
+        .pipeline-stage.active {
+            border-color: #007bff;
+            background-color: #f8f9fa;
+        }
+        .pipeline-stage.success {
+            border-color: #28a745;
+            background-color: #d4edda;
+        }
+        .pipeline-stage.error {
+            border-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .post-card {
+            border-left: 4px solid #007bff;
+            margin-bottom: 1rem;
+        }
+        .quality-badge {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <div class="container-fluid mt-4">
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h4 class="mb-0">
+                            <i class="fas fa-robot me-2"></i>
+                            Reddit Ghost Publisher - Enhanced Dashboard
+                        </h4>
+                        <small>Real API Integration: <span id="apiUrl">https://reddit-crawl-mvp.vercel.app</span></small>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Full Pipeline Integration:</strong> Reddit Collection → AI Processing → Ghost Publishing
+                            <br><small>Last updated: <span id="currentTime"></span></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pipeline Status -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-stream me-2"></i>Full Pipeline Execution</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Stage 1: Reddit Collection -->
+                        <div class="pipeline-stage" id="stage1">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="fab fa-reddit me-2"></i>1. Reddit Collection</span>
+                                <button class="btn btn-sm btn-primary" onclick="runStage1()">
+                                    <i class="fas fa-download me-1"></i> Collect Posts
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div id="stage1-results">
+                                    <p class="text-muted">Click "Collect Posts" to start Reddit data collection</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage 2: AI Processing -->
+                        <div class="pipeline-stage" id="stage2">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-brain me-2"></i>2. AI Enhancement</span>
+                                <button class="btn btn-sm btn-success" onclick="runStage2()" disabled id="stage2-btn">
+                                    <i class="fas fa-magic me-1"></i> Process with AI
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div id="stage2-results">
+                                    <p class="text-muted">AI processing will be available after Reddit collection</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage 3: Ghost Publishing -->
+                        <div class="pipeline-stage" id="stage3">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <span><i class="fas fa-ghost me-2"></i>3. Ghost Publishing</span>
+                                <div>
+                                    <select id="publishStatus" class="form-select form-select-sm d-inline-block me-2" style="width: auto;">
+                                        <option value="draft">Draft</option>
+                                        <option value="published">Published</option>
+                                    </select>
+                                    <button class="btn btn-sm btn-warning" onclick="runStage3()" disabled id="stage3-btn">
+                                        <i class="fas fa-upload me-1"></i> Publish to Ghost
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="stage3-results">
+                                    <p class="text-muted">Ghost publishing will be available after AI processing</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Full Pipeline Button -->
+                        <div class="text-center mt-4">
+                            <button class="btn btn-lg btn-success" onclick="runFullPipeline()">
+                                <i class="fas fa-play-circle me-2"></i> Run Full Pipeline
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics Dashboard -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card text-center card-stat">
+                    <div class="card-body">
+                        <h5 class="card-title text-primary">Collected Posts</h5>
+                        <h3 id="collectedCount">0</h3>
+                        <small id="collectedDetails" class="text-muted">Ready to collect</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center card-stat">
+                    <div class="card-body">
+                        <h5 class="card-title text-success">AI Processed</h5>
+                        <h3 id="processedCount">0</h3>
+                        <small id="processedDetails" class="text-muted">Avg Quality: -</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center card-stat">
+                    <div class="card-body">
+                        <h5 class="card-title text-info">Published</h5>
+                        <h3 id="publishedCount">0</h3>
+                        <small id="publishedDetails" class="text-muted">Ready to publish</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center card-stat">
+                    <div class="card-body">
+                        <h5 class="card-title text-warning">Success Rate</h5>
+                        <h3 id="successRate">0%</h3>
+                        <small id="costEstimate" class="text-muted">Cost: $0.00</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Logs -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5><i class="fas fa-terminal me-2"></i>System Activity Log</h5>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearLog()">
+                            <i class="fas fa-trash me-1"></i> Clear Log
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div id="systemLog" class="log-output">
+                            <div>[INFO] Enhanced Dashboard initialized</div>
+                            <div>[INFO] Real API integration ready</div>
+                            <div>[INFO] Pipeline stages: Collection → AI → Publishing</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const API_BASE_URL = 'https://reddit-crawl-mvp.vercel.app';
+        let pipelineData = {
+            collected: [],
+            processed: [],
+            published: []
+        };
+
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleString('ko-KR');
+        }
+
+        function addLog(message, type = 'INFO') {
+            const logDiv = document.getElementById('systemLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `<div>[${type}] ${timestamp}: ${message}</div>`;
+            logDiv.innerHTML += logEntry;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('systemLog').innerHTML = '<div>[INFO] Log cleared by user</div>';
+        }
+
+        function updateStats() {
+            document.getElementById('collectedCount').textContent = pipelineData.collected.length;
+            document.getElementById('processedCount').textContent = pipelineData.processed.length;
+            document.getElementById('publishedCount').textContent = pipelineData.published.length;
+            
+            const successRate = pipelineData.collected.length > 0 ? 
+                Math.round((pipelineData.published.length / pipelineData.collected.length) * 100) : 0;
+            document.getElementById('successRate').textContent = successRate + '%';
+            
+            // Update details
+            if (pipelineData.processed.length > 0) {
+                const avgQuality = pipelineData.processed.reduce((sum, post) => sum + (post.quality_score || 5), 0) / pipelineData.processed.length;
+                document.getElementById('processedDetails').textContent = `Avg Quality: ${avgQuality.toFixed(1)}/10`;
+            }
+            
+            // Cost estimate
+            const totalTokens = pipelineData.processed.reduce((sum, post) => sum + (post.tokens_used || 0), 0);
+            const estimatedCost = totalTokens * 0.00015 / 1000;
+            document.getElementById('costEstimate').textContent = `Cost: $${estimatedCost.toFixed(4)}`;
+        }
+
+        async function runStage1() {
+            const stage = document.getElementById('stage1');
+            const results = document.getElementById('stage1-results');
+            const btn = stage.querySelector('button');
+            
+            stage.className = 'pipeline-stage active';
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Collecting...';
+            
+            addLog('Starting Reddit collection...');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/reddit-collect`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        subreddits: ['programming', 'technology', 'webdev'],
+                        limit: 10
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    pipelineData.collected = data.data.posts || [];
+                    
+                    results.innerHTML = `
+                        <div class="alert alert-success">
+                            <strong>Collection Complete!</strong><br>
+                            Collected: ${data.data.collected_posts} posts<br>
+                            Subreddits: ${data.data.subreddits_processed.join(', ')}<br>
+                            ${data.data.note ? `<small>${data.data.note}</small>` : ''}
+                        </div>
+                        <div class="row">
+                            ${pipelineData.collected.slice(0, 3).map(post => `
+                                <div class="col-md-4">
+                                    <div class="card post-card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">${post.title.substring(0, 50)}...</h6>
+                                            <p class="card-text small">
+                                                r/${post.subreddit} | Score: ${post.score} | Comments: ${post.comments}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    
+                    stage.className = 'pipeline-stage success';
+                    document.getElementById('stage2-btn').disabled = false;
+                    addLog(`Reddit collection successful: ${data.data.collected_posts} posts`, 'SUCCESS');
+                } else {
+                    throw new Error(data.error || 'Collection failed');
+                }
+            } catch (error) {
+                results.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                stage.className = 'pipeline-stage error';
+                addLog(`Reddit collection failed: ${error.message}`, 'ERROR');
+            }
+            
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-download me-1"></i> Collect Posts';
+            updateStats();
+        }
+
+        async function runStage2() {
+            const stage = document.getElementById('stage2');
+            const results = document.getElementById('stage2-results');
+            const btn = document.getElementById('stage2-btn');
+            
+            stage.className = 'pipeline-stage active';
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Processing...';
+            
+            addLog('Starting AI processing...');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/ai-process`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        posts: pipelineData.collected,
+                        processing_type: 'enhance'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    pipelineData.processed = data.data.posts || [];
+                    
+                    results.innerHTML = `
+                        <div class="alert alert-success">
+                            <strong>AI Processing Complete!</strong><br>
+                            Processed: ${data.data.processed_posts} posts<br>
+                            Successful AI: ${data.data.successful_ai_processing}<br>
+                            Tokens used: ${data.data.total_tokens_used}<br>
+                            Cost: $${data.data.estimated_cost_usd?.toFixed(4) || '0.0000'}<br>
+                            ${data.data.note ? `<small>${data.data.note}</small>` : ''}
+                        </div>
+                        <div class="row">
+                            ${pipelineData.processed.slice(0, 2).map(post => `
+                                <div class="col-md-6">
+                                    <div class="card post-card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">${post.enhanced_title || post.title}</h6>
+                                            <p class="card-text small">${post.summary}</p>
+                                            <div>
+                                                <span class="badge quality-badge ${post.quality_score >= 8 ? 'bg-success' : post.quality_score >= 6 ? 'bg-warning' : 'bg-secondary'}">
+                                                    Quality: ${post.quality_score}/10
+                                                </span>
+                                                ${post.tags?.map(tag => `<span class="badge bg-light text-dark me-1">${tag}</span>`).join('') || ''}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    
+                    stage.className = 'pipeline-stage success';
+                    document.getElementById('stage3-btn').disabled = false;
+                    addLog(`AI processing successful: ${data.data.successful_ai_processing} posts enhanced`, 'SUCCESS');
+                } else {
+                    throw new Error(data.error || 'AI processing failed');
+                }
+            } catch (error) {
+                results.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                stage.className = 'pipeline-stage error';
+                addLog(`AI processing failed: ${error.message}`, 'ERROR');
+            }
+            
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic me-1"></i> Process with AI';
+            updateStats();
+        }
+
+        async function runStage3() {
+            const stage = document.getElementById('stage3');
+            const results = document.getElementById('stage3-results');
+            const btn = document.getElementById('stage3-btn');
+            const publishStatus = document.getElementById('publishStatus').value;
+            
+            stage.className = 'pipeline-stage active';
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Publishing...';
+            
+            addLog(`Starting Ghost publishing (${publishStatus})...`);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/ghost-publish`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        posts: pipelineData.processed.filter(post => post.publish_ready !== false),
+                        publish_status: publishStatus
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    pipelineData.published = data.data.successful_posts || [];
+                    
+                    results.innerHTML = `
+                        <div class="alert alert-success">
+                            <strong>Ghost Publishing Complete!</strong><br>
+                            Published: ${data.data.published_posts} posts<br>
+                            Failed: ${data.data.failed_posts} posts<br>
+                            Status: ${publishStatus}<br>
+                            ${data.data.note ? `<small>${data.data.note}</small>` : ''}
+                        </div>
+                        ${pipelineData.published.length > 0 ? `
+                        <div class="row">
+                            ${pipelineData.published.map(post => `
+                                <div class="col-md-12 mb-2">
+                                    <div class="card">
+                                        <div class="card-body">
+                                            <h6 class="card-title">${post.enhanced_title || post.title}</h6>
+                                            <p class="card-text small">
+                                                Status: ${post.publish_status} | 
+                                                ${post.ghost_url ? `<a href="${post.ghost_url}" target="_blank">View on Ghost</a>` : 'URL not available'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>` : ''}
+                    `;
+                    
+                    stage.className = 'pipeline-stage success';
+                    addLog(`Ghost publishing successful: ${data.data.published_posts} posts published`, 'SUCCESS');
+                } else {
+                    throw new Error(data.error || 'Ghost publishing failed');
+                }
+            } catch (error) {
+                results.innerHTML = `<div class="alert alert-danger">Error: ${error.message}</div>`;
+                stage.className = 'pipeline-stage error';
+                addLog(`Ghost publishing failed: ${error.message}`, 'ERROR');
+            }
+            
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-upload me-1"></i> Publish to Ghost';
+            updateStats();
+        }
+
+        async function runFullPipeline() {
+            addLog('Starting full pipeline execution...', 'INFO');
+            await runStage1();
+            if (pipelineData.collected.length > 0) {
+                setTimeout(async () => {
+                    await runStage2();
+                    if (pipelineData.processed.length > 0) {
+                        setTimeout(async () => {
+                            await runStage3();
+                            addLog('Full pipeline execution completed!', 'SUCCESS');
+                        }, 2000);
+                    }
+                }, 2000);
+            }
+        }
+
+        // Initialize
+        updateTime();
+        setInterval(updateTime, 1000);
+        addLog('Enhanced Dashboard ready for full pipeline testing');
+    </script>
+</body>
+</html>
