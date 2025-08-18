@@ -1,0 +1,80 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: default-receiver
+    receivers:
+      - uid: default-receiver-uid
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK_URL}
+          channel: '#general'
+          title: 'Reddit Publisher Alert'
+          text: |
+            {{ range .Alerts }}
+            **Alert:** {{ .Annotations.summary }}
+            **Description:** {{ .Annotations.description }}
+            **Status:** {{ .Status }}
+            {{ end }}
+
+  - orgId: 1
+    name: slack-critical
+    receivers:
+      - uid: slack-critical-uid
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK_URL}
+          channel: '#alerts-critical'
+          title: '🚨 Critical Alert - Reddit Publisher'
+          text: |
+            {{ range .Alerts }}
+            **Alert:** {{ .Annotations.summary }}
+            **Description:** {{ .Annotations.description }}
+            **Severity:** {{ .Labels.severity }}
+            **Service:** {{ .Labels.service }}
+            **Status:** {{ .Status }}
+            {{ if .Labels.instance }}**Instance:** {{ .Labels.instance }}{{ end }}
+            {{ end }}
+          color: '#FF0000'
+
+  - orgId: 1
+    name: slack-warning
+    receivers:
+      - uid: slack-warning-uid
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK_URL}
+          channel: '#alerts-warning'
+          title: '⚠️ Warning Alert - Reddit Publisher'
+          text: |
+            {{ range .Alerts }}
+            **Alert:** {{ .Annotations.summary }}
+            **Description:** {{ .Annotations.description }}
+            **Severity:** {{ .Labels.severity }}
+            **Service:** {{ .Labels.service }}
+            **Status:** {{ .Status }}
+            {{ if .Labels.instance }}**Instance:** {{ .Labels.instance }}{{ end }}
+            {{ end }}
+          color: '#FFA500'
+
+  - orgId: 1
+    name: slack-reddit-publisher
+    receivers:
+      - uid: slack-reddit-publisher-uid
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK_URL}
+          channel: '#reddit-publisher-alerts'
+          title: '📊 Reddit Publisher Alert'
+          text: |
+            {{ range .Alerts }}
+            **Alert:** {{ .Annotations.summary }}
+            **Description:** {{ .Annotations.description }}
+            **Severity:** {{ .Labels.severity }}
+            **Service:** {{ .Labels.service }}
+            **Status:** {{ .Status }}
+            {{ if .Labels.instance }}**Instance:** {{ .Labels.instance }}{{ end }}
+            {{ end }}
+          color: '#36A64F'
+
+deleteContactPoints: []

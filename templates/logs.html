@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}로그 - Reddit Ghost Publisher{% endblock %}
+{% block header %}시스템 로그{% endblock %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <select class="form-select" id="serviceFilter">
+                            <option value="">모든 서비스</option>
+                            <option value="collector">Collector</option>
+                            <option value="nlp_pipeline">NLP Pipeline</option>
+                            <option value="publisher">Publisher</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select class="form-select" id="statusFilter">
+                            <option value="">모든 상태</option>
+                            <option value="success">성공</option>
+                            <option value="error">오류</option>
+                            <option value="progress">진행 중</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-primary" onclick="applyFilters()">
+                            <i class="fas fa-filter"></i> 필터 적용
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="clearFilters()">
+                            <i class="fas fa-times"></i> 초기화
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                            <label class="form-check-label" for="autoRefresh">
+                                자동 새로고침 (30초)
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-file-alt"></i> 처리 로그
+                    {% if logs %}
+                        <span class="badge bg-secondary">{{ logs|length }}개</span>
+                    {% endif %}
+                </h5>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary" onclick="location.reload()">
+                        <i class="fas fa-sync-alt"></i> 새로고침
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="exportLogs()">
+                        <i class="fas fa-download"></i> 내보내기
+                    </button>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if error %}
+                    <div class="alert alert-danger m-3">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        로그 조회 중 오류가 발생했습니다: {{ error }}
+                    </div>
+                {% elif logs %}
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0" id="logsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="120">시간</th>
+                                    <th width="100">서비스</th>
+                                    <th width="80">상태</th>
+                                    <th width="80">처리시간</th>
+                                    <th>메시지</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for log in logs %}
+                                <tr class="log-entry {% if log.status == 'success' %}log-success{% elif log.status == 'error' %}log-error{% else %}log-warning{% endif %}">
+                                    <td>
+                                        <small class="text-muted">
+                                            {{ log.created_at.strftime('%m-%d %H:%M:%S') }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-{% if log.service == 'collector' %}primary{% elif log.service == 'nlp_pipeline' %}info{% elif log.service == 'publisher' %}success{% else %}secondary{% endif %}">
+                                            {{ log.service }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if log.status == 'success' %}
+                                            <span class="badge bg-success">성공</span>
+                                        {% elif log.status == 'error' %}
+                                            <span class="badge bg-danger">오류</span>
+                                        {% elif log.status == 'progress' %}
+                                            <span class="badge bg-warning">진행중</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ log.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.time_ms %}
+                                            <small class="text-muted">{{ log.time_ms }}ms</small>
+                                        {% else %}
+                                            <small class="text-muted">-</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if log.error %}
+                                            <div class="text-danger">
+                                                <strong>오류:</strong> {{ log.error[:200] }}
+                                                {% if log.error|length > 200 %}
+                                                    <button class="btn btn-sm btn-link p-0" onclick="showFullError('{{ loop.index }}')">
+                                                        ...더보기
+                                                    </button>
+                                                    <div id="fullError{{ loop.index }}" class="d-none mt-2">
+                                                        <pre class="bg-light p-2 rounded">{{ log.error }}</pre>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">정상 처리</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-file-alt fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">로그가 없습니다</h5>
+                        <p class="text-muted">시스템이 작업을 수행하면 로그가 여기에 표시됩니다.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 실시간 로그 스트림 (향후 구현) -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-terminal"></i> 실시간 로그 스트림
+                    <span class="badge bg-secondary">개발 중</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="liveLogStream" class="bg-dark text-light p-3 rounded" style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 0.85rem;">
+                    <div class="text-muted">실시간 로그 스트림 기능은 개발 중입니다...</div>
+                    <div class="text-muted">현재는 위의 테이블에서 최근 로그를 확인할 수 있습니다.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let autoRefreshInterval;
+
+// 자동 새로고침 설정
+document.getElementById('autoRefresh').addEventListener('change', function() {
+    if (this.checked) {
+        startAutoRefresh();
+    } else {
+        stopAutoRefresh();
+    }
+});
+
+function startAutoRefresh() {
+    autoRefreshInterval = setInterval(() => {
+        location.reload();
+    }, 30000); // 30초마다
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+    }
+}
+
+// 필터 적용
+function applyFilters() {
+    const serviceFilter = document.getElementById('serviceFilter').value;
+    const statusFilter = document.getElementById('statusFilter').value;
+    
+    const rows = document.querySelectorAll('#logsTable tbody tr');
+    
+    rows.forEach(row => {
+        const service = row.querySelector('td:nth-child(2) .badge').textContent.trim();
+        const status = row.querySelector('td:nth-child(3) .badge').textContent.trim();
+        
+        let showRow = true;
+        
+        if (serviceFilter && service !== serviceFilter) {
+            showRow = false;
+        }
+        
+        if (statusFilter) {
+            const statusMap = {
+                'success': '성공',
+                'error': '오류',
+                'progress': '진행중'
+            };
+            if (statusMap[statusFilter] && status !== statusMap[statusFilter]) {
+                showRow = false;
+            }
+        }
+        
+        row.style.display = showRow ? '' : 'none';
+    });
+}
+
+function clearFilters() {
+    document.getElementById('serviceFilter').value = '';
+    document.getElementById('statusFilter').value = '';
+    
+    const rows = document.querySelectorAll('#logsTable tbody tr');
+    rows.forEach(row => {
+        row.style.display = '';
+    });
+}
+
+function showFullError(index) {
+    const errorDiv = document.getElementById(`fullError${index}`);
+    errorDiv.classList.toggle('d-none');
+}
+
+function exportLogs() {
+    // 로그 내보내기 기능 (CSV 형태)
+    const table = document.getElementById('logsTable');
+    const rows = Array.from(table.querySelectorAll('tbody tr:not([style*="display: none"])'));
+    
+    let csv = '시간,서비스,상태,처리시간,메시지\n';
+    
+    rows.forEach(row => {
+        const cells = row.querySelectorAll('td');
+        const time = cells[0].textContent.trim();
+        const service = cells[1].textContent.trim();
+        const status = cells[2].textContent.trim();
+        const duration = cells[3].textContent.trim();
+        const message = cells[4].textContent.trim().replace(/"/g, '""');
+        
+        csv += `"${time}","${service}","${status}","${duration}","${message}"\n`;
+    });
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `reddit_publisher_logs_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+// 페이지 로드 시 자동 새로고침 시작
+if (document.getElementById('autoRefresh').checked) {
+    startAutoRefresh();
+}
+
+// 페이지 언로드 시 인터벌 정리
+window.addEventListener('beforeunload', () => {
+    stopAutoRefresh();
+});
+</script>
+{% endblock %}

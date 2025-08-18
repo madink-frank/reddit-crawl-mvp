@@ -1,0 +1,303 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: reddit-publisher-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-reddit_publisher}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      TZ: UTC
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: reddit-publisher-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # FastAPI Gateway
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-api
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-reddit_publisher}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-RedditGhostPublisher/1.0}
+      - REDDIT_DAILY_CALLS_LIMIT=${REDDIT_DAILY_CALLS_LIMIT:-5000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_DAILY_TOKENS_LIMIT=${OPENAI_DAILY_TOKENS_LIMIT:-100000}
+      - GHOST_ADMIN_KEY=${GHOST_ADMIN_KEY}
+      - GHOST_API_URL=${GHOST_API_URL}
+      - DEFAULT_OG_IMAGE_URL=${DEFAULT_OG_IMAGE_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key}
+      - COLLECT_CRON=${COLLECT_CRON:-0 * * * *}
+      - BACKUP_CRON=${BACKUP_CRON:-0 4 * * *}
+      - SUBREDDITS=${SUBREDDITS:-programming,technology}
+      - BATCH_SIZE=${BATCH_SIZE:-20}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - Collector
+  worker-collector:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-worker-collector
+    command: celery -A app.celery_app worker -Q collect -c 1 --loglevel=info --hostname=collector@%h
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-reddit_publisher}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-RedditGhostPublisher/1.0}
+      - REDDIT_DAILY_CALLS_LIMIT=${REDDIT_DAILY_CALLS_LIMIT:-5000}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - SUBREDDITS=${SUBREDDITS:-programming,technology}
+      - BATCH_SIZE=${BATCH_SIZE:-20}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - NLP Pipeline
+  worker-nlp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-worker-nlp
+    command: celery -A app.celery_app worker -Q process -c 1 --loglevel=info --hostname=nlp@%h
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-reddit_publisher}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_DAILY_TOKENS_LIMIT=${OPENAI_DAILY_TOKENS_LIMIT:-100000}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - Publisher
+  worker-publisher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-worker-publisher
+    command: celery -A app.celery_app worker -Q publish -c 1 --loglevel=info --hostname=publisher@%h
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-reddit_publisher}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - GHOST_ADMIN_KEY=${GHOST_ADMIN_KEY}
+      - GHOST_API_URL=${GHOST_API_URL}
+      - DEFAULT_OG_IMAGE_URL=${DEFAULT_OG_IMAGE_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - Backup
+  worker-backup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-worker-backup
+    command: celery -A app.celery_app worker -Q backup -c 1 --loglevel=info --hostname=backup@%h
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-reddit_publisher}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - PGDATABASE=${POSTGRES_DB:-reddit_publisher}
+    volumes:
+      - ./logs:/app/logs
+      - postgres_backups:/backups
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Beat Scheduler
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-scheduler
+    command: celery -A app.celery_app beat --loglevel=info --schedule=/app/celerybeat/schedule
+    environment:
+      - DEBUG=${DEBUG:-false}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-reddit_publisher}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - COLLECT_CRON=${COLLECT_CRON:-0 * * * *}
+      - BACKUP_CRON=${BACKUP_CRON:-0 4 * * *}
+    volumes:
+      - ./logs:/app/logs
+      - scheduler_data:/app/celerybeat
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Backup Container (dedicated for backup tasks with cron)
+  backup:
+    image: postgres:15-alpine
+    container_name: reddit-publisher-backup
+    command: >
+      sh -c "
+        # Install required packages for cron
+        apk add --no-cache dcron &&
+        # Make backup script executable
+        chmod +x /usr/local/bin/backup-database.sh &&
+        # Set up cron job for backup (default: daily at 4 AM UTC)
+        echo '${BACKUP_CRON:-0 4 * * *} /usr/local/bin/backup-database.sh' | crontab - &&
+        # Start cron daemon in foreground
+        crond -f -l 2
+      "
+    environment:
+      - TZ=UTC
+      - PGHOST=postgres
+      - PGPORT=5432
+      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - PGDATABASE=${POSTGRES_DB:-reddit_publisher}
+    volumes:
+      - ./scripts/backup-database.sh:/usr/local/bin/backup-database.sh:ro
+      - postgres_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  redis_data:
+  postgres_backups:
+  scheduler_data:

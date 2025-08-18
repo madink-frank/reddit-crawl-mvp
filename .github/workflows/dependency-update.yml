@@ -1,0 +1,79 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    - cron: '0 2 * * 1'  # Every Monday at 2 AM UTC
+  workflow_dispatch:
+
+jobs:
+  update-dependencies:
+    name: Update Dependencies
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: '1.7.1'
+    
+    - name: Update dependencies
+      run: |
+        poetry update
+        poetry export -f requirements.txt --output requirements.txt --without-hashes
+        poetry export -f requirements.txt --output requirements-dev.txt --with dev --without-hashes
+    
+    - name: Check for security vulnerabilities
+      run: |
+        poetry run safety check
+        poetry run bandit -r app/ -ll
+    
+    - name: Run tests with updated dependencies
+      run: |
+        poetry run pytest tests/unit/ -x
+      env:
+        TESTING: true
+    
+    - name: Create Pull Request
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: 'chore: update dependencies'
+        title: 'chore: update dependencies'
+        body: |
+          ## Dependency Updates
+          
+          This PR updates project dependencies to their latest versions.
+          
+          ### Changes
+          - Updated Python dependencies via Poetry
+          - Regenerated requirements.txt files
+          - Verified security with Safety and Bandit
+          - Ran unit tests to ensure compatibility
+          
+          ### Security Check
+          - ✅ No known security vulnerabilities found
+          - ✅ Unit tests pass with updated dependencies
+          
+          Please review the changes and merge if everything looks good.
+        branch: dependency-updates
+        delete-branch: true
+    
+    - name: Notify Slack
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#maintenance'
+        text: 'Dependency update check completed'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

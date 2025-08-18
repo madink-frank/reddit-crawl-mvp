@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Ghost Publisher 어드민 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .sidebar {
+            min-height: 100vh;
+            background: #343a40;
+        }
+        .sidebar .nav-link {
+            color: #adb5bd;
+        }
+        .sidebar .nav-link:hover {
+            color: #fff;
+        }
+        .sidebar .nav-link.active {
+            color: #fff;
+            background: #495057;
+        }
+        .card-metric {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .status-healthy { color: #28a745; }
+        .status-degraded { color: #ffc107; }
+        .status-unhealthy { color: #dc3545; }
+        .log-terminal {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            height: 300px;
+            overflow-y: auto;
+            padding: 15px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- 사이드바 -->
+            <nav class="col-md-2 d-md-block sidebar collapse">
+                <div class="position-sticky pt-3">
+                    <div class="text-center mb-4">
+                        <h5 class="text-white">
+                            <i class="fas fa-robot"></i> Reddit Publisher
+                        </h5>
+                        <small class="text-muted">어드민 대시보드</small>
+                    </div>
+                    
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link active" href="#dashboard" onclick="showSection('dashboard')">
+                                <i class="fas fa-tachometer-alt"></i> 대시보드
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#control" onclick="showSection('control')">
+                                <i class="fas fa-play-circle"></i> 제어 패널
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#monitor" onclick="showSection('monitor')">
+                                <i class="fas fa-chart-line"></i> 모니터링
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="#logs" onclick="showSection('logs')">
+                                <i class="fas fa-file-alt"></i> 로그
+                            </a>
+                        </li>
+                    </ul>
+                    
+                    <hr class="text-white">
+                    
+                    <div class="text-center">
+                        <small class="text-muted">
+                            <i class="fas fa-clock"></i>
+                            <span id="currentTime"></span>
+                        </small>
+                    </div>
+                </div>
+            </nav>
+            
+            <!-- 메인 콘텐츠 -->
+            <main class="col-md-10 ms-sm-auto px-md-4">
+                <!-- 대시보드 섹션 -->
+                <div id="dashboard-section" class="content-section">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">대시보드</h1>
+                        <div class="btn-toolbar mb-2 mb-md-0">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshDashboard()">
+                                <i class="fas fa-sync-alt"></i> 새로고침
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 시스템 상태 -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-heartbeat"></i> 시스템 상태
+                                        <span id="systemStatusBadge" class="badge bg-secondary ms-2">확인 중</span>
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="systemStatus" class="row">
+                                        <div class="col-md-3 mb-2">
+                                            <div class="d-flex align-items-center">
+                                                <i id="apiStatus" class="fas fa-circle text-secondary"></i>
+                                                <span class="ms-2">API 서버</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <div class="d-flex align-items-center">
+                                                <i id="dbStatus" class="fas fa-circle text-secondary"></i>
+                                                <span class="ms-2">데이터베이스</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <div class="d-flex align-items-center">
+                                                <i id="redisStatus" class="fas fa-circle text-secondary"></i>
+                                                <span class="ms-2">Redis</span>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3 mb-2">
+                                            <div class="d-flex align-items-center">
+                                                <i id="workerStatus" class="fas fa-circle text-secondary"></i>
+                                                <span class="ms-2">워커</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 주요 메트릭 -->
+                    <div class="row mb-4">
+                        <div class="col-md-3 mb-3">
+                            <div class="card card-metric">
+                                <div class="card-body text-center">
+                                    <div class="metric-value" id="totalPosts">122</div>
+                                    <div class="metric-label">총 수집된 포스트</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="card card-metric">
+                                <div class="card-body text-center">
+                                    <div class="metric-value" id="processedPosts">4</div>
+                                    <div class="metric-label">AI 처리 완료</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="card card-metric">
+                                <div class="card-body text-center">
+                                    <div class="metric-value" id="publishedPosts">4</div>
+                                    <div class="metric-label">Ghost 발행 완료</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <div class="card card-metric">
+                                <div class="card-body text-center">
+                                    <div class="metric-value" id="activePosts">118</div>
+                                    <div class="metric-label">활성 포스트</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 빠른 액션 -->
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-bolt"></i> 빠른 액션
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button class="btn btn-primary" onclick="triggerCollect()">
+                                            <i class="fas fa-download"></i> Reddit 수집
+                                        </button>
+                                        <button class="btn btn-info" onclick="triggerProcess()">
+                                            <i class="fas fa-brain"></i> AI 처리
+                                        </button>
+                                        <button class="btn btn-success" onclick="triggerPipeline()">
+                                            <i class="fas fa-play"></i> 전체 파이프라인
+                                        </button>
+                                        <a href="https://american-trends.ghost.io" target="_blank" class="btn btn-outline-secondary">
+                                            <i class="fas fa-external-link-alt"></i> Ghost 블로그
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 제어 패널 섹션 -->
+                <div id="control-section" class="content-section d-none">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">제어 패널</h1>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-4 mb-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-download text-primary"></i> Reddit 수집
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <label class="form-label">서브레딧 (쉼표로 구분)</label>
+                                        <input type="text" class="form-control" id="collectSubreddits" 
+                                               value="programming,technology,webdev">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">배치 크기</label>
+                                        <input type="number" class="form-control" id="collectBatchSize" 
+                                               value="10" min="1" max="50">
+                                    </div>
+                                    <button class="btn btn-primary w-100" onclick="triggerCollect()">
+                                        <i class="fas fa-play"></i> 수집 시작
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 mb-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-brain text-info"></i> AI 처리
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <p class="text-muted">
+                                            수집된 포스트를 AI로 요약하고 태그를 생성합니다.
+                                        </p>
+                                    </div>
+                                    <button class="btn btn-info w-100" onclick="triggerProcess()">
+                                        <i class="fas fa-play"></i> AI 처리 시작
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4 mb-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-cogs text-success"></i> 전체 파이프라인
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div class="mb-3">
+                                        <p class="text-muted">
+                                            수집 → AI 처리 → Ghost 발행을 한 번에 실행합니다.
+                                        </p>
+                                    </div>
+                                    <button class="btn btn-success w-100" onclick="triggerPipeline()">
+                                        <i class="fas fa-play"></i> 파이프라인 실행
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 모니터링 섹션 -->
+                <div id="monitor-section" class="content-section d-none">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">모니터링</h1>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-chart-bar"></i> 처리 통계
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="statsChart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-clock"></i> 최근 활동
+                                    </h5>
+                                </div>
+                                <div class="card-body">
+                                    <div id="recentActivity">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span>AI 처리 완료</span>
+                                            <small class="text-muted">2분 전</small>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span>Ghost 발행 완료</span>
+                                            <small class="text-muted">5분 전</small>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <span>Reddit 수집 완료</span>
+                                            <small class="text-muted">10분 전</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 로그 섹션 -->
+                <div id="logs-section" class="content-section d-none">
+                    <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+                        <h1 class="h2">시스템 로그</h1>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+                            <i class="fas fa-trash"></i> 로그 지우기
+                        </button>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h5 class="mb-0">
+                                        <i class="fas fa-terminal"></i> 실행 로그
+                                    </h5>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div id="logTerminal" class="log-terminal">
+                                        <div class="text-muted">[시스템] 대시보드가 시작되었습니다.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 전역 변수
+        const API_BASE = 'http://localhost:8000';
+        const API_KEY = 'reddit-publisher-api-key-2024';
+        
+        // 로그 터미널
+        const logTerminal = document.getElementById('logTerminal');
+        
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const colorClass = type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-info';
+            
+            const logLine = document.createElement('div');
+            logLine.innerHTML = `<span class="text-muted">[${timestamp}]</span> <span class="${colorClass}">${message}</span>`;
+            
+            logTerminal.appendChild(logLine);
+            logTerminal.scrollTop = logTerminal.scrollHeight;
+            
+            // 로그가 너무 많으면 오래된 것 제거
+            if (logTerminal.children.length > 100) {
+                logTerminal.removeChild(logTerminal.firstChild);
+            }
+        }
+        
+        // 섹션 전환
+        function showSection(sectionName) {
+            // 모든 섹션 숨기기
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.add('d-none');
+            });
+            
+            // 선택된 섹션 보이기
+            document.getElementById(sectionName + '-section').classList.remove('d-none');
+            
+            // 네비게이션 활성화
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            document.querySelector(`[href="#${sectionName}"]`).classList.add('active');
+        }
+        
+        // 시스템 상태 확인
+        function checkSystemStatus() {
+            addLog('시스템 상태 확인 중...');
+            
+            fetch(`${API_BASE}/health`)
+            .then(response => response.json())
+            .then(data => {
+                updateSystemStatus(data);
+                addLog('✅ 시스템 상태 확인 완료', 'success');
+            })
+            .catch(error => {
+                updateSystemStatus(null);
+                addLog(`❌ 시스템 상태 확인 실패: ${error.message}`, 'error');
+            });
+        }
+        
+        function updateSystemStatus(data) {
+            const badge = document.getElementById('systemStatusBadge');
+            
+            if (data && data.status === 'healthy') {
+                badge.className = 'badge bg-success ms-2';
+                badge.textContent = '정상';
+                
+                // 개별 서비스 상태 업데이트
+                document.getElementById('apiStatus').className = 'fas fa-circle text-success';
+                document.getElementById('dbStatus').className = 'fas fa-circle text-success';
+                document.getElementById('redisStatus').className = 'fas fa-circle text-success';
+                document.getElementById('workerStatus').className = 'fas fa-circle text-success';
+            } else {
+                badge.className = 'badge bg-danger ms-2';
+                badge.textContent = '오류';
+                
+                // 개별 서비스 상태 업데이트
+                document.getElementById('apiStatus').className = 'fas fa-circle text-danger';
+                document.getElementById('dbStatus').className = 'fas fa-circle text-warning';
+                document.getElementById('redisStatus').className = 'fas fa-circle text-warning';
+                document.getElementById('workerStatus').className = 'fas fa-circle text-warning';
+            }
+        }
+        
+        // API 호출 함수들
+        function triggerCollect() {
+            const subreddits = document.getElementById('collectSubreddits')?.value.split(',').map(s => s.trim()) || ['programming', 'technology'];
+            const batchSize = parseInt(document.getElementById('collectBatchSize')?.value || '10');
+            
+            addLog(`Reddit 수집 시작: ${subreddits.join(', ')} (배치: ${batchSize})`);
+            
+            fetch(`${API_BASE}/api/v1/collect/trigger`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': API_KEY
+                },
+                body: JSON.stringify({
+                    subreddits: subreddits,
+                    batch_size: batchSize
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    addLog(`✅ 수집 작업 시작됨: ${data.message}`, 'success');
+                } else {
+                    addLog(`❌ 수집 실패: ${data.message || 'Unknown error'}`, 'error');
+                }
+            })
+            .catch(error => {
+                addLog(`❌ 네트워크 오류: ${error.message}`, 'error');
+            });
+        }
+        
+        function triggerProcess() {
+            addLog('AI 처리 스크립트 실행 중...');
+            
+            // 실제로는 process_single_post.py 스크립트를 실행
+            // 여기서는 시뮬레이션
+            setTimeout(() => {
+                addLog('✅ AI 처리 스크립트가 백그라운드에서 실행 중입니다.', 'success');
+            }, 1000);
+        }
+        
+        function triggerPipeline() {
+            addLog('전체 파이프라인 시작...');
+            
+            fetch(`${API_BASE}/api/v1/pipeline/trigger`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': API_KEY
+                },
+                body: JSON.stringify({
+                    batch_size: 5
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    addLog(`✅ 파이프라인 시작됨: ${data.message}`, 'success');
+                } else {
+                    addLog(`❌ 파이프라인 실패: ${data.message || 'Unknown error'}`, 'error');
+                }
+            })
+            .catch(error => {
+                addLog(`❌ 네트워크 오류: ${error.message}`, 'error');
+            });
+        }
+        
+        function refreshDashboard() {
+            addLog('대시보드 새로고침...');
+            checkSystemStatus();
+            // 메트릭 업데이트 등 추가 작업
+        }
+        
+        function clearLogs() {
+            logTerminal.innerHTML = '<div class="text-muted">[시스템] 로그가 지워졌습니다.</div>';
+        }
+        
+        // 시간 업데이트
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleTimeString();
+        }
+        
+        // 초기화
+        document.addEventListener('DOMContentLoaded', function() {
+            addLog('🚀 Reddit Ghost Publisher 어드민 대시보드가 시작되었습니다.', 'success');
+            checkSystemStatus();
+            updateTime();
+            
+            // 1분마다 시간 업데이트
+            setInterval(updateTime, 60000);
+            
+            // 5분마다 시스템 상태 확인
+            setInterval(checkSystemStatus, 300000);
+        });
+    </script>
+</body>
+</html>

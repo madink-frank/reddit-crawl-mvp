@@ -1,0 +1,378 @@
+name: Emergency Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+      confirm:
+        description: 'Type "ROLLBACK" to confirm'
+        required: true
+        type: string
+
+jobs:
+  validate-rollback:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    outputs:
+      should_rollback: ${{ steps.validate.outputs.should_rollback }}
+    
+    steps:
+    - name: Validate confirmation
+      id: validate
+      run: |
+        if [[ "${{ github.event.inputs.confirm }}" != "ROLLBACK" ]]; then
+          echo "❌ Rollback not confirmed. Please type 'ROLLBACK' to confirm."
+          echo "should_rollback=false" >> $GITHUB_OUTPUT
+          exit 1
+        else
+          echo "✅ Rollback confirmed"
+          echo "should_rollback=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Log rollback request
+      run: |
+        echo "🚨 EMERGENCY ROLLBACK REQUESTED"
+        echo "Environment: ${{ github.event.inputs.environment }}"
+        echo "Reason: ${{ github.event.inputs.reason }}"
+        echo "Requested by: ${{ github.actor }}"
+        echo "Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  emergency-rollback:
+    name: Execute Emergency Rollback
+    runs-on: ubuntu-latest
+    needs: validate-rollback
+    if: needs.validate-rollback.outputs.should_rollback == 'true'
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+    
+    - name: Add server to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+    
+    - name: Notify rollback start
+      uses: 8398a7/action-slack@v3
+      with:
+        status: custom
+        custom_payload: |
+          {
+            "channel": "#incidents",
+            "username": "rollback-bot",
+            "icon_emoji": ":warning:",
+            "attachments": [
+              {
+                "color": "warning",
+                "title": "🚨 EMERGENCY ROLLBACK INITIATED",
+                "fields": [
+                  {
+                    "title": "Environment",
+                    "value": "${{ github.event.inputs.environment }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Reason",
+                    "value": "${{ github.event.inputs.reason }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Initiated by",
+                    "value": "${{ github.actor }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Timestamp",
+                    "value": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                    "short": true
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Create incident log
+      run: |
+        ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+          mkdir -p /opt/reddit-publisher/incidents
+          cat > /opt/reddit-publisher/incidents/rollback-$(date +%Y%m%d-%H%M%S).log << 'EOF'
+        EMERGENCY ROLLBACK LOG
+        =====================
+        Timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)
+        Environment: ${{ github.event.inputs.environment }}
+        Reason: ${{ github.event.inputs.reason }}
+        Initiated by: ${{ github.actor }}
+        GitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        
+        Pre-rollback system state:
+        EOF
+        "
+    
+    - name: Capture pre-rollback state
+      run: |
+        ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+          cd /opt/reddit-publisher
+          
+          echo 'Current deployment:' >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log
+          if [ -L current ]; then
+            readlink current >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log
+          else
+            echo 'No current deployment symlink found' >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log
+          fi
+          
+          echo 'Running services:' >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log
+          if [ -f current/docker-compose.prod.yml ]; then
+            docker-compose -f current/docker-compose.prod.yml ps >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log 2>&1
+          fi
+          
+          echo 'System resources:' >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log
+          df -h >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log
+          free -h >> incidents/rollback-$(date +%Y%m%d-%H%M%S).log
+        "
+    
+    - name: Execute rollback
+      run: |
+        ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+          cd /opt/reddit-publisher
+          
+          # Use the deployment script for rollback
+          if [ -f scripts/deploy.sh ]; then
+            chmod +x scripts/deploy.sh
+            ./scripts/deploy.sh --rollback --force
+          else
+            # Manual rollback if script not available
+            echo 'Deployment script not found, performing manual rollback...'
+            
+            # Find the most recent backup
+            LATEST_BACKUP=\$(ls -t backups/ 2>/dev/null | head -n1)
+            
+            if [ -n \"\$LATEST_BACKUP\" ]; then
+              echo \"Rolling back to: \$LATEST_BACKUP\"
+              
+              # Stop current services
+              if [ -f current/docker-compose.prod.yml ]; then
+                docker-compose -f current/docker-compose.prod.yml down
+              fi
+              
+              # Restore backup
+              ln -sfn backups/\$LATEST_BACKUP current
+              
+              # Start restored services
+              cd current
+              docker-compose -f docker-compose.prod.yml up -d
+              
+              echo 'Manual rollback completed'
+            else
+              echo 'No backup found for rollback'
+              exit 1
+            fi
+          fi
+        "
+    
+    - name: Verify rollback success
+      id: verify
+      run: |
+        ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+          cd /opt/reddit-publisher/current
+          
+          # Wait for services to start
+          sleep 30
+          
+          # Check service status
+          EXPECTED_SERVICES=\$(docker-compose -f docker-compose.prod.yml config --services | wc -l)
+          RUNNING_SERVICES=\$(docker-compose -f docker-compose.prod.yml ps --services --filter 'status=running' | wc -l)
+          
+          echo \"Expected services: \$EXPECTED_SERVICES\"
+          echo \"Running services: \$RUNNING_SERVICES\"
+          
+          if [ \$RUNNING_SERVICES -lt \$EXPECTED_SERVICES ]; then
+            echo 'Not all services are running after rollback!'
+            docker-compose -f docker-compose.prod.yml ps
+            exit 1
+          fi
+          
+          # Health check
+          for i in {1..10}; do
+            if curl -f http://localhost:8000/health; then
+              echo 'Health check passed after rollback'
+              break
+            else
+              echo \"Health check attempt \$i failed, retrying...\"
+              sleep 10
+            fi
+            
+            if [ \$i -eq 10 ]; then
+              echo 'Health check failed after rollback'
+              exit 1
+            fi
+          done
+        "
+    
+    - name: Update incident log with results
+      if: always()
+      run: |
+        ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+          cd /opt/reddit-publisher
+          INCIDENT_LOG=\$(ls -t incidents/rollback-*.log | head -n1)
+          
+          echo '' >> \$INCIDENT_LOG
+          echo 'Rollback execution results:' >> \$INCIDENT_LOG
+          echo 'Status: ${{ steps.verify.outcome }}' >> \$INCIDENT_LOG
+          echo 'Completed at: $(date -u +%Y-%m-%dT%H:%M:%SZ)' >> \$INCIDENT_LOG
+          
+          if [ '${{ steps.verify.outcome }}' = 'success' ]; then
+            echo 'All services restored and healthy' >> \$INCIDENT_LOG
+          else
+            echo 'Rollback encountered issues - manual intervention required' >> \$INCIDENT_LOG
+          fi
+          
+          echo '' >> \$INCIDENT_LOG
+          echo 'Post-rollback system state:' >> \$INCIDENT_LOG
+          
+          if [ -L current ]; then
+            echo 'Current deployment:' >> \$INCIDENT_LOG
+            readlink current >> \$INCIDENT_LOG
+          fi
+          
+          if [ -f current/docker-compose.prod.yml ]; then
+            echo 'Service status:' >> \$INCIDENT_LOG
+            docker-compose -f current/docker-compose.prod.yml ps >> \$INCIDENT_LOG 2>&1
+          fi
+        "
+    
+    - name: Run post-rollback smoke tests
+      if: steps.verify.outcome == 'success'
+      run: |
+        # Install dependencies for smoke tests
+        pip install requests pytest
+        
+        # Run critical smoke tests
+        python -m pytest tests/e2e/smoke_tests.py::TestSmokeTests::test_health_endpoint -v
+        python -m pytest tests/e2e/smoke_tests.py::TestSmokeTests::test_queue_status_endpoint -v
+        python -m pytest tests/e2e/smoke_tests.py::TestSmokeTests::test_worker_status_endpoint -v
+      env:
+        API_BASE_URL: ${{ secrets.API_BASE_URL }}
+        API_KEY: ${{ secrets.API_KEY }}
+    
+    - name: Notify rollback completion
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: custom
+        custom_payload: |
+          {
+            "channel": "#incidents",
+            "username": "rollback-bot",
+            "icon_emoji": "${{ steps.verify.outcome == 'success' && ':white_check_mark:' || ':x:' }}",
+            "attachments": [
+              {
+                "color": "${{ steps.verify.outcome == 'success' && 'good' || 'danger' }}",
+                "title": "${{ steps.verify.outcome == 'success' && '✅ ROLLBACK COMPLETED SUCCESSFULLY' || '❌ ROLLBACK FAILED' }}",
+                "fields": [
+                  {
+                    "title": "Environment",
+                    "value": "${{ github.event.inputs.environment }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Status",
+                    "value": "${{ steps.verify.outcome }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Duration",
+                    "value": "~${{ job.duration }} minutes",
+                    "short": true
+                  },
+                  {
+                    "title": "Next Steps",
+                    "value": "${{ steps.verify.outcome == 'success' && 'Monitor system stability and investigate root cause' || 'Manual intervention required - check server logs' }}",
+                    "short": false
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Create post-incident tasks
+      if: steps.verify.outcome == 'success'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const title = `Post-Incident: Emergency Rollback - ${{ github.event.inputs.environment }}`;
+          const body = `
+          ## Incident Summary
+          
+          **Environment:** ${{ github.event.inputs.environment }}
+          **Rollback Reason:** ${{ github.event.inputs.reason }}
+          **Initiated by:** ${{ github.actor }}
+          **Completed:** ${new Date().toISOString()}
+          
+          ## Post-Incident Tasks
+          
+          - [ ] Investigate root cause of the issue that required rollback
+          - [ ] Review monitoring alerts and logs from the incident period
+          - [ ] Identify what could have prevented this incident
+          - [ ] Update deployment procedures if necessary
+          - [ ] Schedule post-mortem meeting
+          - [ ] Document lessons learned
+          - [ ] Plan fix for the original issue
+          - [ ] Test fix in staging environment
+          - [ ] Schedule re-deployment when ready
+          
+          ## Related Links
+          
+          - [Rollback Workflow Run](${context.payload.repository.html_url}/actions/runs/${context.runId})
+          - [Incident Log](Server: /opt/reddit-publisher/incidents/)
+          
+          ## Monitoring
+          
+          Continue monitoring system stability for the next 24 hours.
+          `;
+          
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: title,
+            body: body,
+            labels: ['incident', 'rollback', 'post-mortem']
+          });
+
+  cleanup:
+    name: Post-Rollback Cleanup
+    runs-on: ubuntu-latest
+    needs: emergency-rollback
+    if: always()
+    
+    steps:
+    - name: Archive incident logs
+      run: |
+        echo "Incident logs have been created on the server"
+        echo "Location: /opt/reddit-publisher/incidents/"
+        echo "Please review and archive these logs appropriately"
+    
+    - name: Update status page
+      if: needs.emergency-rollback.result == 'success'
+      run: |
+        echo "Consider updating your status page to reflect system recovery"
+        echo "Rollback completed successfully for ${{ github.event.inputs.environment }}"

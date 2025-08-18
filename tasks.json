@@ -1,0 +1,134 @@
+[
+  {
+    "id": "CRAWL-001",
+    "title": "Reddit_Crawl_App 크롤러 기본 구현",
+    "type": "impl",
+    "depends_on": [],
+    "estimate_min": 240,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": true,
+    "notes": "manual-review"
+  },
+  {
+    "id": "CRAWL-002",
+    "title": "크롤러 필터링/중복제거 로직 구현",
+    "type": "impl",
+    "depends_on": ["CRAWL-001"],
+    "estimate_min": 120,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": true,
+    "notes": "manual-review"
+  },
+  {
+    "id": "GHOST-001",
+    "title": "Ghost 게시 워커 기본 구현",
+    "type": "impl",
+    "depends_on": ["CRAWL-002"],
+    "estimate_min": 180,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": true,
+    "notes": "manual-review"
+  },
+  {
+    "id": "SEC-001",
+    "title": "API Key 인증/인가 로직 구현",
+    "type": "impl",
+    "depends_on": [],
+    "estimate_min": 90,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": true,
+    "notes": "manual-review"
+  },
+  {
+    "id": "PERF-001",
+    "title": "대용량 처리/스케일링 구조 설계",
+    "type": "spec",
+    "depends_on": [],
+    "estimate_min": 60,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": true,
+    "notes": "manual-review"
+  },
+  {
+    "id": "TEST-001",
+    "title": "크롤러 단위 테스트 작성",
+    "type": "test",
+    "depends_on": ["CRAWL-001", "CRAWL-002"],
+    "estimate_min": 60,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": true,
+    "notes": "manual-review"
+  },
+  {
+    "id": "TEST-002",
+    "title": "게시 워커 통합 테스트 작성",
+    "type": "test",
+    "depends_on": ["GHOST-001"],
+    "estimate_min": 60,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": true,
+    "notes": "manual-review"
+  },
+  {
+    "id": "ADMIN-001",
+    "title": "어드민 페이지 배포 후 기능 미노출 이슈 기록",
+    "type": "spec",
+    "depends_on": [],
+    "estimate_min": 10,
+    "assignee": "",
+    "status": "done",
+    "blocked_by_spec_approval": false,
+    "notes": "운영 환경에서 어드민 기능 미노출 현상 발생 확인 완료"
+  },
+  {
+    "id": "ADMIN-002",
+    "title": "어드민 페이지 배포 이슈 원인 분석 및 해결",
+    "type": "impl",
+    "depends_on": ["ADMIN-001"],
+    "estimate_min": 60,
+    "assignee": "",
+    "status": "done",
+    "blocked_by_spec_approval": false,
+    "notes": "원인 분석 완료: 1) Ghost CMS에 업로드된 HTML이 정적 안내 페이지만 포함, 실제 대시보드 기능(Flask/FastAPI 기반 동적 UI) 누락. 2) 로컬 API 서버는 실행 중이나 일부 엔드포인트 500 에러. 해결방안: ghost_admin_page.html 내용 수정 또는 별도 대시보드 서버 배포"
+  },
+  {
+    "id": "ADMIN-003",
+    "title": "어드민 페이지 재배포 및 기능 정상화 검증",
+    "type": "test",
+    "depends_on": ["ADMIN-002"],
+    "estimate_min": 30,
+    "assignee": "",
+    "status": "done",
+    "blocked_by_spec_approval": false,
+    "notes": "Ghost CMS 재배포 완료했으나 CSP 정책으로 인해 HTML 콘텐츠가 제대로 렌더링되지 않음. 별도 서버 배포(ADMIN-005)가 필요함"
+  },
+  {
+    "id": "ADMIN-004",
+    "title": "Ghost CMS 어드민 페이지 HTML 내용 수정",
+    "type": "impl",
+    "depends_on": ["ADMIN-002"],
+    "estimate_min": 120,
+    "assignee": "",
+    "status": "done",
+    "blocked_by_spec_approval": false,
+    "notes": "ghost_admin_page.html에 실제 대시보드 기능(버튼, 데이터 표시, API 연동 등) 포함하도록 수정 완료. API_BASE_URL을 운영 환경 URL로 변경하고 CORS 헤더 추가"
+  },
+  {
+    "id": "ADMIN-005",
+    "title": "별도 어드민 대시보드 서버 배포 (우선순위)",
+    "type": "impl",
+    "depends_on": ["ADMIN-003"],
+    "estimate_min": 90,
+    "assignee": "",
+    "status": "todo",
+    "blocked_by_spec_approval": false,
+    "notes": "Ghost CMS CSP 정책 문제로 인해 별도 서버 배포 필요. 방안: 1) admin_dashboard.py를 별도 서버로 배포 2) 도메인 설정 (예: admin.reddit-crawl-app.com) 3) SSL 인증서 적용 4) CORS 설정으로 Ghost CMS에서 접근 가능하도록 구성"
+  }
+]

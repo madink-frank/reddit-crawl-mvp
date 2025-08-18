@@ -1,0 +1,122 @@
+groups:
+- name: reddit-publisher-alerts
+  rules:
+  - alert: HighQueueDepth
+    expr: celery_queue_length > 1000
+    for: 5m
+    labels:
+      severity: warning
+      service: reddit-publisher
+    annotations:
+      summary: "High Celery queue depth detected"
+      description: "Queue depth is {{ $value }} which exceeds the threshold of 1000"
+
+  - alert: APIRateLimitApproaching
+    expr: rate(reddit_api_calls_total[1h]) > 80
+    for: 2m
+    labels:
+      severity: warning
+      service: reddit-publisher
+    annotations:
+      summary: "Reddit API rate limit approaching"
+      description: "Reddit API usage is {{ $value }} calls/hour, approaching the limit of 100"
+
+  - alert: HighTokenUsage
+    expr: increase(openai_tokens_used[1d]) > 800000
+    for: 10m
+    labels:
+      severity: critical
+      service: reddit-publisher
+    annotations:
+      summary: "High OpenAI token usage detected"
+      description: "Daily OpenAI token usage is {{ $value }}, approaching the limit of 1M tokens"
+
+  - alert: HighAPIErrorRate
+    expr: (rate(fastapi_requests_total{status=~"4..|5.."}[5m]) / rate(fastapi_requests_total[5m])) * 100 > 5
+    for: 3m
+    labels:
+      severity: critical
+      service: reddit-publisher
+    annotations:
+      summary: "High API error rate detected"
+      description: "API error rate is {{ $value }}% which exceeds the threshold of 5%"
+
+  - alert: HighAPIResponseTime
+    expr: histogram_quantile(0.95, rate(fastapi_request_duration_seconds_bucket[5m])) > 0.4
+    for: 5m
+    labels:
+      severity: warning
+      service: reddit-publisher
+    annotations:
+      summary: "High API response time detected"
+      description: "API p95 response time is {{ $value }}s which exceeds the threshold of 0.4s"
+
+  - alert: HighMemoryUsage
+    expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+    for: 5m
+    labels:
+      severity: critical
+      service: reddit-publisher
+    annotations:
+      summary: "High memory usage detected"
+      description: "Memory usage is {{ $value }}% which exceeds the threshold of 85%"
+
+  - alert: HighDiskUsage
+    expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/"} * 100) / node_filesystem_size_bytes{mountpoint="/"}) > 80
+    for: 5m
+    labels:
+      severity: critical
+      service: reddit-publisher
+    annotations:
+      summary: "High disk usage detected"
+      description: "Disk usage is {{ $value }}% which exceeds the threshold of 80%"
+
+  - alert: ServiceDown
+    expr: up == 0
+    for: 1m
+    labels:
+      severity: critical
+      service: reddit-publisher
+    annotations:
+      summary: "Service is down"
+      description: "{{ $labels.job }} service on {{ $labels.instance }} is down"
+
+  - alert: CeleryWorkerDown
+    expr: celery_active_workers == 0
+    for: 2m
+    labels:
+      severity: critical
+      service: reddit-publisher
+    annotations:
+      summary: "No active Celery workers"
+      description: "All Celery workers are down, tasks cannot be processed"
+
+  - alert: DatabaseConnectionsHigh
+    expr: postgresql_connections_active > 80
+    for: 5m
+    labels:
+      severity: warning
+      service: reddit-publisher
+    annotations:
+      summary: "High database connection count"
+      description: "Active database connections: {{ $value }}, approaching connection limit"
+
+  - alert: RedisMemoryHigh
+    expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 80
+    for: 5m
+    labels:
+      severity: warning
+      service: reddit-publisher
+    annotations:
+      summary: "High Redis memory usage"
+      description: "Redis memory usage is {{ $value }}% which exceeds the threshold of 80%"
+
+  - alert: TaskFailureRateHigh
+    expr: rate(celery_task_failure_total[5m]) / rate(celery_task_success_total[5m]) * 100 > 10
+    for: 5m
+    labels:
+      severity: warning
+      service: reddit-publisher
+    annotations:
+      summary: "High task failure rate"
+      description: "Task failure rate is {{ $value }}% which exceeds the threshold of 10%"

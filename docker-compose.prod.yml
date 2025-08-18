@@ -1,0 +1,231 @@
+version: '3.8'
+
+services:
+  api:
+    image: ${DOCKER_IMAGE_TAG:-reddit-publisher:latest}
+    ports:
+      - "0.0.0.0:8000:8000"
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT}
+      - REDDIT_DAILY_CALLS_LIMIT=${REDDIT_DAILY_CALLS_LIMIT:-5000}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_DAILY_TOKENS_LIMIT=${OPENAI_DAILY_TOKENS_LIMIT:-100000}
+      - GHOST_ADMIN_KEY=${GHOST_ADMIN_KEY}
+      - GHOST_API_URL=${GHOST_API_URL}
+      - DEFAULT_OG_IMAGE_URL=${DEFAULT_OG_IMAGE_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - COLLECT_CRON=${COLLECT_CRON:-0 * * * *}
+      - BACKUP_CRON=${BACKUP_CRON:-0 4 * * *}
+      - QUEUE_ALERT_THRESHOLD=${QUEUE_ALERT_THRESHOLD:-500}
+      - FAILURE_RATE_THRESHOLD=${FAILURE_RATE_THRESHOLD:-0.05}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  worker-collector:
+    image: ${DOCKER_IMAGE_TAG:-reddit-publisher:latest}
+    command: celery -A app.celery_app worker -Q collect -c 1 --loglevel=info
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT}
+      - REDDIT_DAILY_CALLS_LIMIT=${REDDIT_DAILY_CALLS_LIMIT:-5000}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  worker-nlp:
+    image: ${DOCKER_IMAGE_TAG:-reddit-publisher:latest}
+    command: celery -A app.celery_app worker -Q process -c 1 --loglevel=info
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_DAILY_TOKENS_LIMIT=${OPENAI_DAILY_TOKENS_LIMIT:-100000}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  worker-publisher:
+    image: ${DOCKER_IMAGE_TAG:-reddit-publisher:latest}
+    command: celery -A app.celery_app worker -Q publish -c 1 --loglevel=info
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - GHOST_ADMIN_KEY=${GHOST_ADMIN_KEY}
+      - GHOST_API_URL=${GHOST_API_URL}
+      - DEFAULT_OG_IMAGE_URL=${DEFAULT_OG_IMAGE_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  scheduler:
+    image: ${DOCKER_IMAGE_TAG:-reddit-publisher:latest}
+    command: celery -A app.celery_app beat --loglevel=info
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - COLLECT_CRON=${COLLECT_CRON:-0 * * * *}
+      - BACKUP_CRON=${BACKUP_CRON:-0 4 * * *}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  backup:
+    image: postgres:15-alpine
+    command: >
+      sh -c "
+        echo '${BACKUP_CRON:-0 4 * * *} /usr/local/bin/backup-database.sh' | crontab - &&
+        crond -f
+      "
+    environment:
+      - TZ=UTC
+      - PGHOST=postgres
+      - PGUSER=${DB_USER}
+      - PGPASSWORD=${DB_PASSWORD}
+      - PGDATABASE=reddit_publisher
+    volumes:
+      - ./scripts/backup-database.sh:/usr/local/bin/backup-database.sh:ro
+      - postgres_backups:/backups
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  postgres:
+    image: postgres:15
+    environment:
+      - TZ=UTC
+      - POSTGRES_DB=reddit_publisher
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    ports:
+      - "127.0.0.1:5433:5432"  # Use different port to avoid conflicts
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d reddit_publisher"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+  
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6380:6379"  # Use different port to avoid conflicts
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  postgres_backups:
+    driver: local
+
+networks:
+  default:
+    driver: bridge

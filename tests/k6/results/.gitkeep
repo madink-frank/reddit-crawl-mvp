@@ -1,0 +1,2 @@
+# This file keeps the results directory in git
+# k6 test results will be generated here but should not be committed

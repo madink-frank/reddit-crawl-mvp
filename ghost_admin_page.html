@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Ghost Publisher Admin</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .card-stat { 
+            transition: transform 0.2s; 
+            cursor: pointer;
+        }
+        .card-stat:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .status-healthy { color: #28a745; }
+        .status-degraded { color: #ffc107; }
+        .status-unhealthy { color: #dc3545; }
+        .loading { opacity: 0.6; pointer-events: none; }
+        .action-card {
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .action-card:hover {
+            border-color: var(--bs-primary);
+            transform: scale(1.02);
+        }
+        .log-output {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow">
+        <div class="container">
+            <span class="navbar-brand">
+                <i class="fas fa-robot text-primary"></i> Reddit Ghost Publisher
+                <small class="text-muted">Admin Dashboard</small>
+            </span>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text">
+                    <i class="fas fa-clock"></i> <span id="currentTime"></span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- 시스템 상태 -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-heartbeat"></i> 시스템 상태</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="systemStatus">
+                            <div class="text-center">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">로딩 중...</span>
+                                </div>
+                                <p class="mt-2">시스템 상태 확인 중...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 통계 카드 -->
+        <div class="row mb-4" id="statsCards">
+            <div class="col-md-3">
+                <div class="card card-stat bg-primary text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-database fa-2x mb-2"></i>
+                        <h3 id="totalPosts">-</h3>
+                        <p class="mb-0">총 수집된 포스트</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-info text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-robot fa-2x mb-2"></i>
+                        <h3 id="aiProcessed">-</h3>
+                        <p class="mb-0">AI 처리 완료</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-success text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-blog fa-2x mb-2"></i>
+                        <h3 id="published">-</h3>
+                        <p class="mb-0">Ghost 발행 완료</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-warning text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-percentage fa-2x mb-2"></i>
+                        <h3 id="successRate">-</h3>
+                        <p class="mb-0">성공률</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 파이프라인 제어 -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="fas fa-play-circle"></i> 파이프라인 제어</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card action-card border-primary h-100">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-download fa-3x text-primary mb-3"></i>
+                                        <h6>Reddit 수집</h6>
+                                        <p class="text-muted small">새로운 Reddit 포스트를 수집합니다</p>
+                                        <button class="btn btn-primary" onclick="triggerCollection()">
+                                            <i class="fas fa-play"></i> 수집 시작
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card action-card border-info h-100">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-brain fa-3x text-info mb-3"></i>
+                                        <h6>AI 처리</h6>
+                                        <p class="text-muted small">수집된 포스트를 AI로 요약합니다</p>
+                                        <button class="btn btn-info" onclick="processPost()">
+                                            <i class="fas fa-robot"></i> 포스트 처리
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card action-card border-success h-100">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-rocket fa-3x text-success mb-3"></i>
+                                        <h6>전체 파이프라인</h6>
+                                        <p class="text-muted small">수집 → AI 처리 → Ghost 발행</p>
+                                        <button class="btn btn-success" onclick="runFullPipeline()">
+                                            <i class="fas fa-play"></i> 전체 실행
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 빠른 액션 및 모니터링 -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-tools"></i> 빠른 액션</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-outline-primary" onclick="refreshData()">
+                                <i class="fas fa-sync"></i> 데이터 새로고침
+                            </button>
+                            <button class="btn btn-outline-success" onclick="viewGhostBlog()">
+                                <i class="fas fa-external-link-alt"></i> Ghost 블로그 보기
+                            </button>
+                            <button class="btn btn-outline-warning" onclick="showLogs()">
+                                <i class="fas fa-file-alt"></i> 시스템 로그
+                            </button>
+                            <button class="btn btn-outline-info" onclick="checkHealth()">
+                                <i class="fas fa-heartbeat"></i> 헬스체크
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0"><i class="fas fa-chart-line"></i> 실시간 모니터링</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="realtimeStats">
+                            <div class="row text-center">
+                                <div class="col-6">
+                                    <h6 class="text-muted">API 상태</h6>
+                                    <span id="apiStatus" class="badge bg-secondary">확인 중</span>
+                                </div>
+                                <div class="col-6">
+                                    <h6 class="text-muted">마지막 업데이트</h6>
+                                    <small id="lastUpdate" class="text-muted">-</small>
+                                </div>
+                            </div>
+                            <hr>
+                            <div class="progress mb-2">
+                                <div id="processingProgress" class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted">처리 진행률</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 로그 출력 -->
+        <div class="row mb-4" id="logSection" style="display: none;">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-dark text-white">
+                        <h5 class="mb-0">
+                            <i class="fas fa-terminal"></i> 시스템 로그
+                            <button class="btn btn-sm btn-outline-light float-end" onclick="clearLogs()">
+                                <i class="fas fa-trash"></i> 지우기
+                            </button>
+                        </h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="logOutput" class="log-output p-3">
+                            시스템 로그가 여기에 표시됩니다...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 정보 및 도움말 -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="alert alert-info shadow-sm">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>사용 방법:</strong> 
+                    위의 버튼들을 클릭하여 Reddit Ghost Publisher 파이프라인을 제어할 수 있습니다. 
+                    시스템은 자동으로 30초마다 상태를 업데이트합니다.
+                    <br><small class="text-muted">
+                        API 서버: http://localhost:8000 | 
+                        Ghost 블로그: https://american-trends.ghost.io
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // API 설정
+        const API_BASE_URL = 'https://your-production-domain.com';  // 운영 환경 URL로 변경 필요
+        const API_KEY = 'reddit-publisher-api-key-2024';
+        
+        // 현재 시간 업데이트
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleString('ko-KR');
+        }
+        
+        // 헤더 설정
+        function getHeaders() {
+            return {
+                'Content-Type': 'application/json',
+                'X-API-Key': API_KEY,
+                'Access-Control-Allow-Origin': '*'
+            };
+        }
+        
+        // 로그 추가
+        function addLog(message, type = 'info') {
+            const logOutput = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff6b6b' : type === 'success' ? '#51cf66' : '#74c0fc';
+            
+            logOutput.innerHTML += `<div style="color: ${color}">[${timestamp}] ${message}</div>`;
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
+        
+        // 시스템 상태 확인
+        async function checkSystemStatus() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                const data = await response.json();
+                
+                let statusHtml = '';
+                if (response.ok) {
+                    const status = data.status;
+                    const statusClass = status === 'healthy' ? 'success' : status === 'degraded' ? 'warning' : 'danger';
+                    
+                    statusHtml = `
+                        <div class="alert alert-${statusClass}">
+                            <i class="fas fa-${status === 'healthy' ? 'check-circle' : 'exclamation-triangle'}"></i>
+                            <strong>시스템 상태: ${status.toUpperCase()}</strong>
+                            <br><small>업타임: ${data.uptime_seconds || 0}초</small>
+                        </div>
+                    `;
+                    
+                    document.getElementById('apiStatus').className = `badge bg-${statusClass}`;
+                    document.getElementById('apiStatus').textContent = status;
+                } else {
+                    statusHtml = '<div class="alert alert-danger"><i class="fas fa-times-circle"></i> API 서버 연결 실패</div>';
+                    document.getElementById('apiStatus').className = 'badge bg-danger';
+                    document.getElementById('apiStatus').textContent = 'offline';
+                }
+                
+                document.getElementById('systemStatus').innerHTML = statusHtml;
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+                
+            } catch (error) {
+                document.getElementById('systemStatus').innerHTML = 
+                    '<div class="alert alert-danger"><i class="fas fa-times-circle"></i> 네트워크 연결 오류</div>';
+                document.getElementById('apiStatus').className = 'badge bg-danger';
+                document.getElementById('apiStatus').textContent = 'error';
+                addLog(`상태 확인 실패: ${error.message}`, 'error');
+            }
+        }
+        
+        // 통계 업데이트 (모의 데이터)
+        function updateStats() {
+            // 실제 환경에서는 API에서 데이터를 가져옴
+            const stats = {
+                totalPosts: Math.floor(Math.random() * 200) + 100,
+                aiProcessed: Math.floor(Math.random() * 50) + 20,
+                published: Math.floor(Math.random() * 30) + 10
+            };
+            
+            document.getElementById('totalPosts').textContent = stats.totalPosts;
+            document.getElementById('aiProcessed').textContent = stats.aiProcessed;
+            document.getElementById('published').textContent = stats.published;
+            
+            const successRate = stats.totalPosts > 0 ? Math.round((stats.published / stats.totalPosts) * 100) : 0;
+            document.getElementById('successRate').textContent = successRate + '%';
+            
+            const progress = stats.totalPosts > 0 ? (stats.aiProcessed / stats.totalPosts) * 100 : 0;
+            document.getElementById('processingProgress').style.width = progress + '%';
+        }
+        
+        // Reddit 수집 트리거
+        async function triggerCollection() {
+            const button = event.target;
+            const originalText = button.innerHTML;
+            
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 수집 중...';
+            button.disabled = true;
+            
+            addLog('Reddit 포스트 수집을 시작합니다...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/collect/trigger`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ batch_size: 10 })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addLog(`수집 성공: ${result.message}`, 'success');
+                    addLog(`작업 ID: ${result.task_id}`, 'info');
+                    setTimeout(refreshData, 2000);
+                } else {
+                    addLog(`수집 실패: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`네트워크 오류: ${error.message}`, 'error');
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        // AI 포스트 처리
+        function processPost() {
+            addLog('AI 포스트 처리를 시작합니다...', 'info');
+            addLog('백그라운드에서 process_single_post.py를 실행하세요.', 'info');
+            alert('AI 처리가 시작됩니다.\n터미널에서 "python process_single_post.py"를 실행하세요.');
+        }
+        
+        // 전체 파이프라인 실행
+        async function runFullPipeline() {
+            const button = event.target;
+            const originalText = button.innerHTML;
+            
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 실행 중...';
+            button.disabled = true;
+            
+            addLog('전체 파이프라인을 시작합니다...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/v1/pipeline/trigger`, {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ batch_size: 3 })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addLog(`파이프라인 시작: ${result.message}`, 'success');
+                    addLog(`작업 ID: ${result.task_id}`, 'info');
+                    setTimeout(refreshData, 3000);
+                } else {
+                    addLog(`파이프라인 실패: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                addLog(`네트워크 오류: ${error.message}`, 'error');
+            } finally {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        // 데이터 새로고침
+        function refreshData() {
+            addLog('데이터를 새로고침합니다...', 'info');
+            checkSystemStatus();
+            updateStats();
+        }
+        
+        // Ghost 블로그 보기
+        function viewGhostBlog() {
+            addLog('Ghost 블로그를 새 창에서 엽니다...', 'info');
+            window.open('https://american-trends.ghost.io', '_blank');
+        }
+        
+        // 로그 표시/숨기기
+        function showLogs() {
+            const logSection = document.getElementById('logSection');
+            logSection.style.display = logSection.style.display === 'none' ? 'block' : 'none';
+            
+            if (logSection.style.display === 'block') {
+                addLog('시스템 로그를 표시합니다...', 'info');
+            }
+        }
+        
+        // 로그 지우기
+        function clearLogs() {
+            document.getElementById('logOutput').innerHTML = '로그가 지워졌습니다...<br>';
+        }
+        
+        // 헬스체크
+        function checkHealth() {
+            addLog('헬스체크를 실행합니다...', 'info');
+            checkSystemStatus();
+        }
+        
+        // 초기화
+        function init() {
+            updateTime();
+            checkSystemStatus();
+            updateStats();
+            addLog('Reddit Ghost Publisher Admin Dashboard가 시작되었습니다.', 'success');
+            
+            // 자동 업데이트 (30초마다)
+            setInterval(() => {
+                updateTime();
+                checkSystemStatus();
+                updateStats();
+            }, 30000);
+            
+            // 시간 업데이트 (1초마다)
+            setInterval(updateTime, 1000);
+        }
+        
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

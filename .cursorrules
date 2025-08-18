@@ -1,0 +1,15 @@
+# SPEC-FIRST GUARDRAILS — INGEST MODE
+
+0) INGEST-ONLY EXCEPTION
+- docs/ 및 tasks.json 생성·수정은 스펙 승인 전(DRAFT)에도 허용한다.
+- 단, src/**, *.py, *.js, *.php 등 **코드 파일** 생성/수정/삭제는 금지.
+
+1) SPEC GATE
+- docs/spec.md 첫 줄이 `STATUS: APPROVED`가 아니면 코드 변경 금지.
+- 이 단계에서 에이전트는 리포지토리 읽기/요약/문서 합성만 수행한다.
+
+2) DIFF-ONLY
+- 어떤 변경이든 **unified diff**만 출력(설명 50단어 이내).
+
+3) TEST-FIRST(문서 단계)
+- 구현 전 단계에서는 **docs/tests.md** 초안부터 생성·보강한다.

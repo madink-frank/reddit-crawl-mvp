@@ -1,0 +1,367 @@
+name: Deployment Monitoring
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # Every 5 minutes
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to monitor'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+      alert_threshold:
+        description: 'Alert threshold (1-5, 5 being most critical)'
+        required: false
+        default: '3'
+        type: choice
+        options:
+        - '1'
+        - '2'
+        - '3'
+        - '4'
+        - '5'
+
+env:
+  ENVIRONMENT: ${{ github.event.inputs.environment || 'production' }}
+  ALERT_THRESHOLD: ${{ github.event.inputs.alert_threshold || '3' }}
+
+jobs:
+  health-monitoring:
+    name: Health Check Monitoring
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup SSH
+      uses: webfactory/ssh-agent@v0.8.0
+      with:
+        ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+    
+    - name: Add server to known hosts
+      run: |
+        ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+    
+    - name: Run comprehensive health check
+      id: health_check
+      run: |
+        # Copy health check script to server and run it
+        scp scripts/health-check.sh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/tmp/
+        
+        # Run health check and capture output
+        ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+          chmod +x /tmp/health-check.sh
+          /tmp/health-check.sh --json --verbose
+        " > health_results.json
+        
+        # Check if health check passed
+        if ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "/tmp/health-check.sh --quiet"; then
+          echo "health_status=healthy" >> $GITHUB_OUTPUT
+        else
+          echo "health_status=unhealthy" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Parse health results
+      id: parse_results
+      run: |
+        if [ -f health_results.json ]; then
+          # Extract key metrics
+          OVERALL_STATUS=$(jq -r '.overall_status' health_results.json)
+          API_HEALTH=$(jq -r '.checks.api_health // "unknown"' health_results.json)
+          DOCKER_SERVICES=$(jq -r '.checks.docker_services // "unknown"' health_results.json)
+          REDIS_STATUS=$(jq -r '.checks.redis // "unknown"' health_results.json)
+          POSTGRESQL_STATUS=$(jq -r '.checks.postgresql // "unknown"' health_results.json)
+          DISK_USAGE=$(jq -r '.checks.disk_usage // "unknown"' health_results.json)
+          MEMORY_USAGE=$(jq -r '.checks.memory_usage // "unknown"' health_results.json)
+          
+          echo "overall_status=$OVERALL_STATUS" >> $GITHUB_OUTPUT
+          echo "api_health=$API_HEALTH" >> $GITHUB_OUTPUT
+          echo "docker_services=$DOCKER_SERVICES" >> $GITHUB_OUTPUT
+          echo "redis_status=$REDIS_STATUS" >> $GITHUB_OUTPUT
+          echo "postgresql_status=$POSTGRESQL_STATUS" >> $GITHUB_OUTPUT
+          echo "disk_usage=$DISK_USAGE" >> $GITHUB_OUTPUT
+          echo "memory_usage=$MEMORY_USAGE" >> $GITHUB_OUTPUT
+        else
+          echo "overall_status=unknown" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Check performance metrics
+      id: performance_check
+      run: |
+        # Test API response time
+        START_TIME=$(date +%s.%N)
+        
+        if curl -f -s "${{ secrets.API_BASE_URL }}/health" > /dev/null; then
+          END_TIME=$(date +%s.%N)
+          RESPONSE_TIME=$(echo "$END_TIME - $START_TIME" | bc)
+          echo "api_response_time=$RESPONSE_TIME" >> $GITHUB_OUTPUT
+          
+          # Check if response time is acceptable
+          if (( $(echo "$RESPONSE_TIME > 5.0" | bc -l) )); then
+            echo "api_performance=slow" >> $GITHUB_OUTPUT
+          else
+            echo "api_performance=good" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "api_response_time=timeout" >> $GITHUB_OUTPUT
+          echo "api_performance=failed" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Check queue depths
+      id: queue_check
+      run: |
+        # Check Celery queue depths
+        QUEUE_RESPONSE=$(curl -s -H "Authorization: Bearer ${{ secrets.API_KEY }}" \
+                              "${{ secrets.API_BASE_URL }}/api/v1/status/queues" || echo '{}')
+        
+        if echo "$QUEUE_RESPONSE" | jq -e '.queues' > /dev/null 2>&1; then
+          COLLECT_PENDING=$(echo "$QUEUE_RESPONSE" | jq -r '.queues.collect.pending // 0')
+          PROCESS_PENDING=$(echo "$QUEUE_RESPONSE" | jq -r '.queues.process.pending // 0')
+          PUBLISH_PENDING=$(echo "$QUEUE_RESPONSE" | jq -r '.queues.publish.pending // 0')
+          
+          echo "collect_queue_depth=$COLLECT_PENDING" >> $GITHUB_OUTPUT
+          echo "process_queue_depth=$PROCESS_PENDING" >> $GITHUB_OUTPUT
+          echo "publish_queue_depth=$PUBLISH_PENDING" >> $GITHUB_OUTPUT
+          
+          # Check for queue buildup
+          TOTAL_PENDING=$((COLLECT_PENDING + PROCESS_PENDING + PUBLISH_PENDING))
+          if [ $TOTAL_PENDING -gt 1000 ]; then
+            echo "queue_status=overloaded" >> $GITHUB_OUTPUT
+          elif [ $TOTAL_PENDING -gt 500 ]; then
+            echo "queue_status=high" >> $GITHUB_OUTPUT
+          else
+            echo "queue_status=normal" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "queue_status=unknown" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Determine alert level
+      id: alert_level
+      run: |
+        ALERT_LEVEL=0
+        ISSUES=()
+        
+        # Check overall health
+        if [ "${{ steps.parse_results.outputs.overall_status }}" != "healthy" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 3))
+          ISSUES+=("System health is ${{ steps.parse_results.outputs.overall_status }}")
+        fi
+        
+        # Check API health
+        if [ "${{ steps.parse_results.outputs.api_health }}" != "healthy" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 3))
+          ISSUES+=("API health check failed")
+        fi
+        
+        # Check services
+        if [ "${{ steps.parse_results.outputs.docker_services }}" != "healthy" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 2))
+          ISSUES+=("Docker services are not healthy")
+        fi
+        
+        # Check dependencies
+        if [ "${{ steps.parse_results.outputs.redis_status }}" != "healthy" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 2))
+          ISSUES+=("Redis connectivity issues")
+        fi
+        
+        if [ "${{ steps.parse_results.outputs.postgresql_status }}" != "healthy" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 2))
+          ISSUES+=("PostgreSQL connectivity issues")
+        fi
+        
+        # Check resource usage
+        DISK_USAGE=${{ steps.parse_results.outputs.disk_usage }}
+        if [ "$DISK_USAGE" != "unknown" ] && [ $DISK_USAGE -gt 90 ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 2))
+          ISSUES+=("High disk usage: ${DISK_USAGE}%")
+        elif [ "$DISK_USAGE" != "unknown" ] && [ $DISK_USAGE -gt 80 ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 1))
+          ISSUES+=("Elevated disk usage: ${DISK_USAGE}%")
+        fi
+        
+        MEMORY_USAGE=${{ steps.parse_results.outputs.memory_usage }}
+        if [ "$MEMORY_USAGE" != "unknown" ] && [ $MEMORY_USAGE -gt 95 ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 2))
+          ISSUES+=("High memory usage: ${MEMORY_USAGE}%")
+        elif [ "$MEMORY_USAGE" != "unknown" ] && [ $MEMORY_USAGE -gt 85 ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 1))
+          ISSUES+=("Elevated memory usage: ${MEMORY_USAGE}%")
+        fi
+        
+        # Check performance
+        if [ "${{ steps.performance_check.outputs.api_performance }}" = "slow" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 1))
+          ISSUES+=("API response time is slow: ${{ steps.performance_check.outputs.api_response_time }}s")
+        elif [ "${{ steps.performance_check.outputs.api_performance }}" = "failed" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 3))
+          ISSUES+=("API is not responding")
+        fi
+        
+        # Check queue status
+        if [ "${{ steps.queue_check.outputs.queue_status }}" = "overloaded" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 2))
+          ISSUES+=("Queues are overloaded")
+        elif [ "${{ steps.queue_check.outputs.queue_status }}" = "high" ]; then
+          ALERT_LEVEL=$((ALERT_LEVEL + 1))
+          ISSUES+=("Queue depths are elevated")
+        fi
+        
+        echo "alert_level=$ALERT_LEVEL" >> $GITHUB_OUTPUT
+        
+        # Join issues array
+        IFS='; '
+        echo "issues=${ISSUES[*]}" >> $GITHUB_OUTPUT
+    
+    - name: Send alert if threshold exceeded
+      if: steps.alert_level.outputs.alert_level >= env.ALERT_THRESHOLD
+      uses: 8398a7/action-slack@v3
+      with:
+        status: custom
+        custom_payload: |
+          {
+            "channel": "#alerts",
+            "username": "monitoring-bot",
+            "icon_emoji": ":warning:",
+            "attachments": [
+              {
+                "color": "${{ steps.alert_level.outputs.alert_level >= 5 && 'danger' || steps.alert_level.outputs.alert_level >= 3 && 'warning' || 'good' }}",
+                "title": "🚨 System Health Alert - ${{ env.ENVIRONMENT }}",
+                "fields": [
+                  {
+                    "title": "Alert Level",
+                    "value": "${{ steps.alert_level.outputs.alert_level }}/5",
+                    "short": true
+                  },
+                  {
+                    "title": "Environment",
+                    "value": "${{ env.ENVIRONMENT }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Overall Status",
+                    "value": "${{ steps.parse_results.outputs.overall_status }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Timestamp",
+                    "value": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+                    "short": true
+                  },
+                  {
+                    "title": "Issues Detected",
+                    "value": "${{ steps.alert_level.outputs.issues }}",
+                    "short": false
+                  },
+                  {
+                    "title": "System Metrics",
+                    "value": "API: ${{ steps.parse_results.outputs.api_health }} | Services: ${{ steps.parse_results.outputs.docker_services }} | Redis: ${{ steps.parse_results.outputs.redis_status }} | DB: ${{ steps.parse_results.outputs.postgresql_status }}",
+                    "short": false
+                  },
+                  {
+                    "title": "Resource Usage",
+                    "value": "Disk: ${{ steps.parse_results.outputs.disk_usage }}% | Memory: ${{ steps.parse_results.outputs.memory_usage }}%",
+                    "short": false
+                  },
+                  {
+                    "title": "Queue Status",
+                    "value": "Collect: ${{ steps.queue_check.outputs.collect_queue_depth }} | Process: ${{ steps.queue_check.outputs.process_queue_depth }} | Publish: ${{ steps.queue_check.outputs.publish_queue_depth }}",
+                    "short": false
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Create incident issue for critical alerts
+      if: steps.alert_level.outputs.alert_level >= 4
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const alertLevel = ${{ steps.alert_level.outputs.alert_level }};
+          const issues = `${{ steps.alert_level.outputs.issues }}`;
+          
+          const title = `🚨 Critical System Alert - ${{ env.ENVIRONMENT }} (Level ${alertLevel})`;
+          const body = `
+          ## Critical System Alert
+          
+          **Environment:** ${{ env.ENVIRONMENT }}
+          **Alert Level:** ${alertLevel}/5
+          **Detected:** ${new Date().toISOString()}
+          
+          ## Issues Detected
+          
+          ${issues.split('; ').map(issue => `- ${issue}`).join('\n')}
+          
+          ## System Status
+          
+          - **Overall Status:** ${{ steps.parse_results.outputs.overall_status }}
+          - **API Health:** ${{ steps.parse_results.outputs.api_health }}
+          - **Docker Services:** ${{ steps.parse_results.outputs.docker_services }}
+          - **Redis:** ${{ steps.parse_results.outputs.redis_status }}
+          - **PostgreSQL:** ${{ steps.parse_results.outputs.postgresql_status }}
+          
+          ## Resource Usage
+          
+          - **Disk Usage:** ${{ steps.parse_results.outputs.disk_usage }}%
+          - **Memory Usage:** ${{ steps.parse_results.outputs.memory_usage }}%
+          
+          ## Queue Status
+          
+          - **Collect Queue:** ${{ steps.queue_check.outputs.collect_queue_depth }} pending
+          - **Process Queue:** ${{ steps.queue_check.outputs.process_queue_depth }} pending
+          - **Publish Queue:** ${{ steps.queue_check.outputs.publish_queue_depth }} pending
+          
+          ## Immediate Actions Required
+          
+          - [ ] Investigate root cause of the alert
+          - [ ] Check server logs for errors
+          - [ ] Verify external service dependencies
+          - [ ] Consider scaling resources if needed
+          - [ ] Monitor system recovery
+          
+          ## Monitoring Links
+          
+          - [Monitoring Workflow Run](${context.payload.repository.html_url}/actions/runs/${context.runId})
+          - [System Dashboard](${process.env.GRAFANA_URL || 'Configure Grafana URL'})
+          
+          This issue was automatically created by the monitoring system.
+          `;
+          
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: title,
+            body: body,
+            labels: ['critical', 'monitoring', 'incident', 'auto-generated'],
+            assignees: ['${{ github.repository_owner }}']
+          });
+    
+    - name: Upload health results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: health-check-results-${{ env.ENVIRONMENT }}-${{ github.run_number }}
+        path: health_results.json
+        retention-days: 7
+    
+    - name: Update monitoring status
+      if: always()
+      run: |
+        echo "Monitoring check completed for ${{ env.ENVIRONMENT }}"
+        echo "Overall Status: ${{ steps.parse_results.outputs.overall_status }}"
+        echo "Alert Level: ${{ steps.alert_level.outputs.alert_level }}"
+        
+        if [ "${{ steps.alert_level.outputs.alert_level }}" -ge "${{ env.ALERT_THRESHOLD }}" ]; then
+          echo "⚠️  Alert threshold exceeded - notifications sent"
+        else
+          echo "✅ System operating within normal parameters"
+        fi

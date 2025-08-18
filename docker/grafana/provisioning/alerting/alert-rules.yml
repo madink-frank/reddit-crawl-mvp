@@ -1,0 +1,354 @@
+apiVersion: 1
+
+groups:
+  - name: reddit-publisher-alerts
+    orgId: 1
+    folder: Reddit Publisher
+    interval: 1m
+    rules:
+      - uid: high-queue-depth
+        title: High Queue Depth
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: celery_queue_length > 1000
+              interval: ''
+              refId: A
+          - refId: C
+            queryType: ''
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          description: 'Queue depth is high: {{ $value }}'
+          summary: Celery queue depth exceeds threshold
+        labels:
+          severity: warning
+          service: reddit-publisher
+
+      - uid: api-rate-limit-approaching
+        title: API Rate Limit Approaching
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: rate(reddit_api_calls_total[1h]) > 80
+              interval: ''
+              refId: A
+          - refId: C
+            queryType: ''
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Alerting
+        for: 2m
+        annotations:
+          description: Reddit API rate limit approaching
+          summary: Reddit API usage is near the limit
+        labels:
+          severity: warning
+          service: reddit-publisher
+
+      - uid: high-token-usage
+        title: High Token Usage
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 86400
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: increase(openai_tokens_used[1d]) > 800000
+              interval: ''
+              refId: A
+          - refId: C
+            queryType: ''
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Alerting
+        for: 10m
+        annotations:
+          description: Daily OpenAI token usage approaching limit
+          summary: OpenAI token usage is high
+        labels:
+          severity: critical
+          service: reddit-publisher
+
+      - uid: high-error-rate
+        title: High API Error Rate
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: (rate(fastapi_requests_total{status=~"4..|5.."}[5m]) / rate(fastapi_requests_total[5m])) * 100 > 5
+              interval: ''
+              refId: A
+          - refId: C
+            queryType: ''
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Alerting
+        for: 3m
+        annotations:
+          description: 'API error rate is {{ $value }}%'
+          summary: High error rate detected
+        labels:
+          severity: critical
+          service: reddit-publisher
+
+      - uid: high-response-time
+        title: High API Response Time
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: histogram_quantile(0.95, rate(fastapi_request_duration_seconds_bucket[5m])) > 0.4
+              interval: ''
+              refId: A
+          - refId: C
+            queryType: ''
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          description: 'API p95 response time is {{ $value }}s'
+          summary: API response time is high
+        labels:
+          severity: warning
+          service: reddit-publisher
+
+      - uid: system-resource-high
+        title: High System Resource Usage
+        condition: C
+        data:
+          - refId: A
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+              interval: ''
+              refId: A
+          - refId: B
+            queryType: ''
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/"} * 100) / node_filesystem_size_bytes{mountpoint="/"}) > 80
+              interval: ''
+              refId: B
+          - refId: C
+            queryType: ''
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: or
+                  query:
+                    params:
+                      - A
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: or
+                  query:
+                    params:
+                      - B
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A OR B
+              hide: false
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          description: System resources (memory or disk) are running high
+          summary: High system resource usage detected
+        labels:
+          severity: critical
+          service: reddit-publisher

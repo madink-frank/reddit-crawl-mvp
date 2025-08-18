@@ -1,0 +1,46 @@
+{
+  "execution_info": {
+    "start_time": "2025-08-11T15:12:03.033470",
+    "end_time": "2025-08-11T15:12:03.033473",
+    "duration_seconds": 3e-06,
+    "task": "18.4 \uc131\ub2a5 \ubc0f UX \uac80\uc99d \ud14c\uc2a4\ud2b8 \uc2e4\ud589"
+  },
+  "test_summary": {
+    "total_tests": 7,
+    "passed_tests": 5,
+    "failed_tests": 2,
+    "success_rate": 71.42857142857143
+  },
+  "requirement_results": {
+    "11.34": {
+      "name": "API p95 Performance Testing",
+      "passed": true
+    },
+    "11.35": {
+      "name": "E2E Processing Time Testing",
+      "passed": true
+    },
+    "11.36": {
+      "name": "Throughput Stability Testing",
+      "passed": false
+    },
+    "11.37": {
+      "name": "Article Template Consistency Testing",
+      "passed": true
+    },
+    "11.38": {
+      "name": "Tag Limits and Formatting Testing",
+      "passed": true
+    },
+    "11.39": {
+      "name": "Image Fallback Testing",
+      "passed": true
+    },
+    "11.40": {
+      "name": "Final Release Gate Criteria",
+      "passed": false
+    }
+  },
+  "performance_metrics": {},
+  "detailed_results": []
+}

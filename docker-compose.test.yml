@@ -1,0 +1,110 @@
+# Docker Compose for testing environment
+# Used in CI/CD and local testing
+
+version: '3.8'
+
+services:
+  # Test database
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: reddit_publisher_test
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks:
+      - test-network
+
+  # Test Redis
+  redis-test:
+    image: redis:7-alpine
+    tmpfs:
+      - /data
+    networks:
+      - test-network
+
+  # Test runner
+  test-runner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: development
+    command: pytest --cov=app --cov-report=xml --cov-report=term-missing -v
+    environment:
+      - ENVIRONMENT=test
+      - DATABASE_URL=postgresql://test:test@postgres-test:5432/reddit_publisher_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - CELERY_BROKER_URL=redis://redis-test:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
+    volumes:
+      - .:/app
+      - ./test-results:/app/test-results
+    depends_on:
+      - postgres-test
+      - redis-test
+    networks:
+      - test-network
+
+  # Integration test runner
+  integration-test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: development
+    command: pytest tests/integration/ -v
+    environment:
+      - ENVIRONMENT=test
+      - DATABASE_URL=postgresql://test:test@postgres-test:5432/reddit_publisher_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - CELERY_BROKER_URL=redis://redis-test:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres-test
+      - redis-test
+      - api-test
+    networks:
+      - test-network
+
+  # API for integration testing
+  api-test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+      target: development
+    environment:
+      - ENVIRONMENT=test
+      - DATABASE_URL=postgresql://test:test@postgres-test:5432/reddit_publisher_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - CELERY_BROKER_URL=redis://redis-test:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
+    depends_on:
+      - postgres-test
+      - redis-test
+    networks:
+      - test-network
+
+  # Worker for integration testing
+  worker-test:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+      target: development
+    command: celery -A app.celery_app worker --loglevel=info
+    environment:
+      - ENVIRONMENT=test
+      - DATABASE_URL=postgresql://test:test@postgres-test:5432/reddit_publisher_test
+      - REDIS_URL=redis://redis-test:6379/0
+      - CELERY_BROKER_URL=redis://redis-test:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-test:6379/0
+    depends_on:
+      - postgres-test
+      - redis-test
+    networks:
+      - test-network
+
+networks:
+  test-network:
+    driver: bridge

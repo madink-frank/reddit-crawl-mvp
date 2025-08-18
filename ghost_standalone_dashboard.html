@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Ghost Publisher - 독립형 대시보드</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .card-stat { 
+            transition: transform 0.2s; 
+            cursor: pointer;
+        }
+        .card-stat:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .action-card {
+            border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .action-card:hover {
+            border-color: var(--bs-primary);
+            transform: scale(1.02);
+        }
+        .log-output {
+            background: #1e1e1e;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .status-healthy { color: #28a745; }
+        .status-degraded { color: #ffc107; }
+        .status-unhealthy { color: #dc3545; }
+        .production-badge {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+        .cloud-notice {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow">
+        <div class="container">
+            <span class="navbar-brand">
+                <i class="fas fa-robot text-primary"></i> Reddit Ghost Publisher
+                <small class="text-muted">독립형 대시보드</small>
+                <span class="production-badge ms-2">CLOUD</span>
+            </span>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text">
+                    <i class="fas fa-clock"></i> <span id="currentTime"></span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- 클라우드 배포 안내 -->
+        <div class="cloud-notice">
+            <h4><i class="fas fa-cloud"></i> 클라우드 배포 필요</h4>
+            <p>현재 로컬 서버에 의존하고 있습니다. 완전한 기능을 위해서는 클라우드 배포가 필요합니다.</p>
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <strong>AWS EC2</strong><br>
+                    <small>완전한 제어, 확장성</small>
+                </div>
+                <div class="col-md-4">
+                    <strong>Railway</strong><br>
+                    <small>가장 쉬운 배포</small>
+                </div>
+                <div class="col-md-4">
+                    <strong>Heroku</strong><br>
+                    <small>검증된 플랫폼</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- 시스템 상태 -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0"><i class="fas fa-exclamation-triangle"></i> 시스템 상태 - 로컬 의존</h5>
+                        <small>클라우드 배포 후 실시간 모니터링 가능</small>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-warning">
+                            <strong>로컬 서버 의존 상태</strong><br>
+                            완전한 기능을 위해서는 API 서버를 클라우드에 배포해야 합니다.
+                            <br><br>
+                            <strong>배포 후 가능한 기능:</strong>
+                            <ul class="mt-2 mb-0">
+                                <li>실시간 시스템 상태 모니터링</li>
+                                <li>원격 파이프라인 제어</li>
+                                <li>실시간 통계 업데이트</li>
+                                <li>24/7 자동 운영</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 통계 카드 (모의 데이터) -->
+        <div class="row mb-4" id="statsCards">
+            <div class="col-md-3">
+                <div class="card card-stat bg-primary text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-database fa-2x mb-2"></i>
+                        <h3 id="totalPosts">149</h3>
+                        <p class="mb-0">총 수집된 포스트</p>
+                        <small class="text-light">마지막 로컬 실행 기준</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-info text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-robot fa-2x mb-2"></i>
+                        <h3 id="aiProcessed">6</h3>
+                        <p class="mb-0">AI 처리 완료</p>
+                        <small id="pendingProcessing">대기: 143개</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-success text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-blog fa-2x mb-2"></i>
+                        <h3 id="published">4</h3>
+                        <p class="mb-0">Ghost 발행 완료</p>
+                        <small id="pendingPublishing">대기: 2개</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stat bg-warning text-white shadow">
+                    <div class="card-body text-center">
+                        <i class="fas fa-percentage fa-2x mb-2"></i>
+                        <h3 id="successRate">3%</h3>
+                        <p class="mb-0">성공률</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 배포 가이드 -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-rocket"></i> 클라우드 배포 가이드</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="card action-card border-success h-100">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-train fa-3x text-success mb-3"></i>
+                                        <h6>Railway (추천)</h6>
+                                        <p class="text-muted small">가장 쉬운 배포 방법</p>
+                                        <ul class="text-start small">
+                                            <li>자동 HTTPS</li>
+                                            <li>무료 티어</li>
+                                            <li>PostgreSQL/Redis 자동</li>
+                                        </ul>
+                                        <button class="btn btn-success btn-sm" onclick="showRailwayGuide()">
+                                            가이드 보기
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card action-card border-warning h-100">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-aws fa-3x text-warning mb-3"></i>
+                                        <h6>AWS EC2</h6>
+                                        <p class="text-muted small">완전한 제어와 확장성</p>
+                                        <ul class="text-start small">
+                                            <li>완전한 서버 제어</li>
+                                            <li>높은 성능</li>
+                                            <li>커스텀 도메인</li>
+                                        </ul>
+                                        <button class="btn btn-warning btn-sm" onclick="showAWSGuide()">
+                                            가이드 보기
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card action-card border-info h-100">
+                                    <div class="card-body text-center">
+                                        <i class="fas fa-h-square fa-3x text-info mb-3"></i>
+                                        <h6>Heroku</h6>
+                                        <p class="text-muted small">검증된 플랫폼</p>
+                                        <ul class="text-start small">
+                                            <li>안정적인 서비스</li>
+                                            <li>다양한 애드온</li>
+                                            <li>쉬운 스케일링</li>
+                                        </ul>
+                                        <button class="btn btn-info btn-sm" onclick="showHerokuGuide()">
+                                            가이드 보기
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 배포 가이드 모달 -->
+        <div class="modal fade" id="deployGuideModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="deployGuideTitle">배포 가이드</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="deployGuideContent"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 현재 상태 -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="alert alert-info shadow-sm">
+                    <i class="fas fa-info-circle"></i> 
+                    <strong>현재 상태:</strong> 
+                    Ghost CMS에서 독립적으로 실행 중입니다. 
+                    클라우드 배포 후 완전한 기능을 사용할 수 있습니다.
+                    <br><small class="text-muted">
+                        Ghost 블로그: https://american-trends.ghost.io |
+                        환경: 독립형 | 
+                        마지막 업데이트: <span id="lastUpdate">-</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 현재 시간 업데이트
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleString('ko-KR');
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ko-KR');
+        }
+        
+        // Railway 가이드
+        function showRailwayGuide() {
+            document.getElementById('deployGuideTitle').textContent = 'Railway 배포 가이드';
+            document.getElementById('deployGuideContent').innerHTML = `
+                <h6>1. Railway CLI 설치</h6>
+                <pre><code>npm install -g @railway/cli
+railway login</code></pre>
+                
+                <h6>2. 프로젝트 배포</h6>
+                <pre><code>railway init
+railway up</code></pre>
+                
+                <h6>3. 환경 변수 설정</h6>
+                <pre><code>railway variables set REDDIT_CLIENT_ID=your_client_id
+railway variables set OPENAI_API_KEY=your_openai_key
+railway variables set GHOST_ADMIN_KEY=your_ghost_key</code></pre>
+                
+                <p><strong>장점:</strong> 자동 HTTPS, 무료 티어, 쉬운 설정</p>
+                <p><a href="https://railway.app" target="_blank">Railway 사이트 방문 →</a></p>
+            `;
+            new bootstrap.Modal(document.getElementById('deployGuideModal')).show();
+        }
+        
+        // AWS 가이드
+        function showAWSGuide() {
+            document.getElementById('deployGuideTitle').textContent = 'AWS EC2 배포 가이드';
+            document.getElementById('deployGuideContent').innerHTML = `
+                <h6>1. EC2 인스턴스 생성</h6>
+                <p>t3.medium 이상 권장, Ubuntu 20.04 LTS</p>
+                
+                <h6>2. Docker 설치</h6>
+                <pre><code>sudo apt update
+sudo apt install docker.io docker-compose
+sudo usermod -aG docker ubuntu</code></pre>
+                
+                <h6>3. 프로젝트 배포</h6>
+                <pre><code>git clone your-repo
+cd reddit-ghost-publisher
+docker-compose -f docker-compose.prod.yml up -d</code></pre>
+                
+                <p><strong>장점:</strong> 완전한 제어, 높은 성능, 확장성</p>
+                <p><a href="https://aws.amazon.com/ec2/" target="_blank">AWS EC2 사이트 방문 →</a></p>
+            `;
+            new bootstrap.Modal(document.getElementById('deployGuideModal')).show();
+        }
+        
+        // Heroku 가이드
+        function showHerokuGuide() {
+            document.getElementById('deployGuideTitle').textContent = 'Heroku 배포 가이드';
+            document.getElementById('deployGuideContent').innerHTML = `
+                <h6>1. Heroku CLI 설치</h6>
+                <pre><code>heroku login
+heroku create reddit-ghost-publisher</code></pre>
+                
+                <h6>2. 애드온 추가</h6>
+                <pre><code>heroku addons:create heroku-postgresql:mini
+heroku addons:create heroku-redis:mini</code></pre>
+                
+                <h6>3. 환경 변수 설정</h6>
+                <pre><code>heroku config:set REDDIT_CLIENT_ID=your_client_id
+heroku config:set OPENAI_API_KEY=your_openai_key</code></pre>
+                
+                <p><strong>장점:</strong> 검증된 플랫폼, 안정성, 다양한 애드온</p>
+                <p><a href="https://heroku.com" target="_blank">Heroku 사이트 방문 →</a></p>
+            `;
+            new bootstrap.Modal(document.getElementById('deployGuideModal')).show();
+        }
+        
+        // 초기화
+        function init() {
+            updateTime();
+            
+            // 시간 업데이트 (1초마다)
+            setInterval(updateTime, 1000);
+        }
+        
+        // 페이지 로드 시 초기화
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

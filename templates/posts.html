@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+
+{% block title %}포스트 관리 - Reddit Ghost Publisher{% endblock %}
+{% block header %}포스트 관리{% endblock %}
+
+{% block content %}
+<!-- 필터 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="GET" class="row g-3">
+                    <div class="col-md-3">
+                        <label for="status" class="form-label">상태</label>
+                        <select class="form-select" id="status" name="status">
+                            <option value="all" {% if status_filter == 'all' %}selected{% endif %}>전체</option>
+                            <option value="unprocessed" {% if status_filter == 'unprocessed' %}selected{% endif %}>미처리</option>
+                            <option value="processed" {% if status_filter == 'processed' %}selected{% endif %}>처리됨</option>
+                            <option value="published" {% if status_filter == 'published' %}selected{% endif %}>발행됨</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="subreddit" class="form-label">서브레딧</label>
+                        <select class="form-select" id="subreddit" name="subreddit">
+                            <option value="">전체</option>
+                            {% for sr in subreddits %}
+                            <option value="{{ sr }}" {% if subreddit_filter == sr %}selected{% endif %}>r/{{ sr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-filter"></i> 필터 적용
+                            </button>
+                            <a href="{{ url_for('posts_view') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times"></i> 초기화
+                            </a>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">&nbsp;</label>
+                        <div>
+                            <button type="button" class="btn btn-success" onclick="processSelectedPosts()">
+                                <i class="fas fa-brain"></i> 선택 항목 AI 처리
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 포스트 목록 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-newspaper"></i> 포스트 목록
+                    {% if posts %}
+                        <span class="badge bg-secondary">{{ posts|length }}개</span>
+                    {% endif %}
+                </h5>
+                <div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                        <label class="form-check-label" for="selectAll">전체 선택</label>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                {% if posts %}
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="40"></th>
+                                    <th>제목</th>
+                                    <th width="100">서브레딧</th>
+                                    <th width="80">점수</th>
+                                    <th width="80">댓글</th>
+                                    <th width="100">상태</th>
+                                    <th width="120">수집일</th>
+                                    <th width="100">액션</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for post in posts %}
+                                <tr>
+                                    <td>
+                                        <input class="form-check-input post-checkbox" type="checkbox" 
+                                               value="{{ post.reddit_post_id }}" id="post_{{ loop.index }}">
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-column">
+                                            <strong>{{ post.title[:80] }}{% if post.title|length > 80 %}...{% endif %}</strong>
+                                            {% if post.summary_ko %}
+                                                <small class="text-muted mt-1">
+                                                    {{ post.summary_ko[:100] }}{% if post.summary_ko|length > 100 %}...{% endif %}
+                                                </small>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">r/{{ post.subreddit }}</span>
+                                    </td>
+                                    <td>
+                                        <span class="text-primary">
+                                            <i class="fas fa-arrow-up"></i> {{ post.score }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <span class="text-info">
+                                            <i class="fas fa-comment"></i> {{ post.num_comments }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if post.ghost_url %}
+                                            <span class="badge bg-success">발행됨</span>
+                                        {% elif post.summary_ko %}
+                                            <span class="badge bg-info">처리됨</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">수집됨</span>
+                                        {% endif %}
+                                        
+                                        {% if post.takedown_status != 'active' %}
+                                            <span class="badge bg-warning">{{ post.takedown_status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {{ post.created_at.strftime('%m-%d %H:%M') }}
+                                        </small>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            {% if post.ghost_url %}
+                                                <a href="{{ post.ghost_url }}" target="_blank" 
+                                                   class="btn btn-outline-primary btn-sm" title="Ghost에서 보기">
+                                                    <i class="fas fa-external-link-alt"></i>
+                                                </a>
+                                            {% endif %}
+                                            
+                                            {% if not post.summary_ko %}
+                                                <button class="btn btn-outline-info btn-sm" 
+                                                        onclick="processPost('{{ post.reddit_post_id }}')" 
+                                                        title="AI 처리">
+                                                    <i class="fas fa-brain"></i>
+                                                </button>
+                                            {% endif %}
+                                            
+                                            <button class="btn btn-outline-secondary btn-sm" 
+                                                    onclick="showPostDetails('{{ post.reddit_post_id }}')" 
+                                                    title="상세 정보">
+                                                <i class="fas fa-info-circle"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">포스트가 없습니다</h5>
+                        <p class="text-muted">필터 조건을 변경하거나 새로운 포스트를 수집해보세요.</p>
+                        <a href="{{ url_for('control_panel') }}" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> 포스트 수집하기
+                        </a>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 페이지네이션 (향후 구현) -->
+{% if posts %}
+<div class="row mt-3">
+    <div class="col-12">
+        <nav aria-label="포스트 페이지네이션">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if current_page <= 1 %}disabled{% endif %}">
+                    <a class="page-link" href="?page={{ current_page - 1 }}&status={{ status_filter }}&subreddit={{ subreddit_filter }}">이전</a>
+                </li>
+                <li class="page-item active">
+                    <span class="page-link">{{ current_page }}</span>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ current_page + 1 }}&status={{ status_filter }}&subreddit={{ subreddit_filter }}">다음</a>
+                </li>
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endif %}
+
+<!-- 포스트 상세 모달 -->
+<div class="modal fade" id="postDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">포스트 상세 정보</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="postDetailContent">
+                <div class="text-center">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">로딩 중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    const checkboxes = document.querySelectorAll('.post-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll.checked;
+    });
+}
+
+function processSelectedPosts() {
+    const selectedPosts = Array.from(document.querySelectorAll('.post-checkbox:checked'))
+                               .map(cb => cb.value);
+    
+    if (selectedPosts.length === 0) {
+        alert('처리할 포스트를 선택해주세요.');
+        return;
+    }
+    
+    if (confirm(`선택된 ${selectedPosts.length}개 포스트를 AI로 처리하시겠습니까?`)) {
+        // 각 포스트를 순차적으로 처리
+        processPostsBatch(selectedPosts);
+    }
+}
+
+function processPostsBatch(postIds) {
+    const totalPosts = postIds.length;
+    let processedCount = 0;
+    
+    showAlert('info', `${totalPosts}개 포스트 처리를 시작합니다...`);
+    
+    // 순차적으로 처리 (동시 처리 시 API 제한 문제 방지)
+    function processNext() {
+        if (processedCount >= totalPosts) {
+            showAlert('success', `모든 포스트 처리가 완료되었습니다. (${processedCount}/${totalPosts})`);
+            setTimeout(() => location.reload(), 2000);
+            return;
+        }
+        
+        const postId = postIds[processedCount];
+        processPost(postId, () => {
+            processedCount++;
+            setTimeout(processNext, 2000); // 2초 간격으로 처리
+        });
+    }
+    
+    processNext();
+}
+
+function processPost(postId, callback) {
+    fetch('/api/trigger/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post_id: postId })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log(`포스트 ${postId} 처리 시작됨`);
+        } else {
+            console.error(`포스트 ${postId} 처리 실패:`, data.error);
+        }
+        if (callback) callback();
+    })
+    .catch(error => {
+        console.error(`포스트 ${postId} 처리 오류:`, error);
+        if (callback) callback();
+    });
+}
+
+function showPostDetails(postId) {
+    const modal = new bootstrap.Modal(document.getElementById('postDetailModal'));
+    const content = document.getElementById('postDetailContent');
+    
+    content.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">로딩 중...</span>
+            </div>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // 포스트 상세 정보 로드 (실제 구현에서는 API 호출)
+    setTimeout(() => {
+        content.innerHTML = `
+            <div class="alert alert-info">
+                <h6>포스트 ID: ${postId}</h6>
+                <p>상세 정보 로딩 기능은 개발 중입니다.</p>
+                <p>현재는 포스트 목록에서 기본 정보를 확인할 수 있습니다.</p>
+            </div>
+        `;
+    }, 1000);
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('main');
+    container.insertBefore(alertDiv, container.firstChild.nextSibling);
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}

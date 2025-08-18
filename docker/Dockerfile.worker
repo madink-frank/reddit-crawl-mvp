@@ -1,0 +1,71 @@
+# Multi-stage Dockerfile for Celery Workers
+FROM python:3.12-slim as base
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app \
+    C_FORCE_ROOT=1
+
+# Install system dependencies including ML libraries requirements
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    libgomp1 \
+    libatlas-base-dev \
+    liblapack-dev \
+    gfortran \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create app user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Set work directory
+WORKDIR /app
+
+# Copy requirements first for better Docker layer caching
+COPY requirements.txt ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Development stage
+FROM base as development
+COPY requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY . .
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# Default development command (can be overridden)
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info"]
+
+# Production stage
+FROM base as production
+
+# Copy only necessary application files
+COPY app/ ./app/
+COPY workers/ ./workers/
+COPY templates/ ./templates/
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/tmp && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user for security
+USER appuser
+
+# Health check for worker processes
+HEALTHCHECK --interval=60s --timeout=30s --start-period=10s --retries=3 \
+    CMD celery -A app.celery_app inspect ping || exit 1
+
+# Default production command (can be overridden in docker-compose)
+CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "--concurrency=2"]

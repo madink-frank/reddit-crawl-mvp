@@ -1,0 +1,756 @@
+{
+	"info": {
+		"_postman_id": "reddit-ghost-publisher-smoke-tests",
+		"name": "Reddit Ghost Publisher - Smoke Tests",
+		"description": "Smoke tests for Reddit Ghost Publisher API endpoints covering the main collect→process→publish workflow",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Health Check",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has status field\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('status');",
+							"});",
+							"",
+							"pm.test(\"Health status is healthy\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData.status).to.eql('healthy');",
+							"});",
+							"",
+							"pm.test(\"Response has services field\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('services');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 1000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(1000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"health"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Metrics Endpoint",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Content-Type is text/plain\", function () {",
+							"    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain');",
+							"});",
+							"",
+							"pm.test(\"Response contains Prometheus metrics\", function () {",
+							"    const responseText = pm.response.text();",
+							"    pm.expect(responseText).to.include('reddit_posts_collected_total');",
+							"    pm.expect(responseText).to.include('posts_processed_total');",
+							"    pm.expect(responseText).to.include('posts_published_total');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 2000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/metrics",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"metrics"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Queue Status",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has queue information\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('collect');",
+							"    pm.expect(jsonData).to.have.property('process');",
+							"    pm.expect(jsonData).to.have.property('publish');",
+							"});",
+							"",
+							"pm.test(\"Each queue has required fields\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    ['collect', 'process', 'publish'].forEach(queue => {",
+							"        pm.expect(jsonData[queue]).to.have.property('active');",
+							"        pm.expect(jsonData[queue]).to.have.property('pending');",
+							"    });",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 1000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(1000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/status/queues",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"status",
+						"queues"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Worker Status",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response is an object\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.be.an('object');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 1000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(1000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/status/workers",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"status",
+						"workers"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Trigger Collection",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has status field\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('status');",
+							"    pm.expect(jsonData.status).to.eql('triggered');",
+							"});",
+							"",
+							"pm.test(\"Response has task_id\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('task_id');",
+							"    pm.expect(jsonData.task_id).to.be.a('string');",
+							"});",
+							"",
+							"pm.test(\"Response has subreddits\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('subreddits');",
+							"    pm.expect(jsonData.subreddits).to.be.an('array');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 2000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+							"});",
+							"",
+							"// Store task_id for potential use in other tests",
+							"pm.test(\"Store collection task ID\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.globals.set('collection_task_id', jsonData.task_id);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"subreddits\": [\"{{test_subreddit}}\"],\n    \"batch_size\": {{test_batch_size}}\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/collect/trigger",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"collect",
+						"trigger"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Trigger Collection - Duplicate Test",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200 (idempotent)\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has status field\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('status');",
+							"    pm.expect(jsonData.status).to.eql('triggered');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 2000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"subreddits\": [\"{{test_subreddit}}\"],\n    \"batch_size\": {{test_batch_size}}\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/collect/trigger",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"collect",
+						"trigger"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Trigger Processing",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has status field\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('status');",
+							"    pm.expect(jsonData.status).to.eql('triggered');",
+							"});",
+							"",
+							"pm.test(\"Response has task_id\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('task_id');",
+							"    pm.expect(jsonData.task_id).to.be.a('string');",
+							"});",
+							"",
+							"pm.test(\"Response has reddit_post_id\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('reddit_post_id');",
+							"    pm.expect(jsonData.reddit_post_id).to.eql(pm.globals.get('test_reddit_post_id'));",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 2000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+							"});",
+							"",
+							"// Store task_id for potential use in other tests",
+							"pm.test(\"Store processing task ID\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.globals.set('processing_task_id', jsonData.task_id);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"reddit_post_id\": \"{{test_reddit_post_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/process/trigger",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"process",
+						"trigger"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Trigger Publishing",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"",
+							"pm.test(\"Response has status field\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('status');",
+							"    pm.expect(jsonData.status).to.eql('triggered');",
+							"});",
+							"",
+							"pm.test(\"Response has task_id\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('task_id');",
+							"    pm.expect(jsonData.task_id).to.be.a('string');",
+							"});",
+							"",
+							"pm.test(\"Response has reddit_post_id\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('reddit_post_id');",
+							"    pm.expect(jsonData.reddit_post_id).to.eql(pm.globals.get('test_reddit_post_id'));",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 2000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+							"});",
+							"",
+							"// Store task_id for potential use in other tests",
+							"pm.test(\"Store publishing task ID\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.globals.set('publishing_task_id', jsonData.task_id);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"reddit_post_id\": \"{{test_reddit_post_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/publish/trigger",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"publish",
+						"trigger"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Trigger Publishing - Duplicate Prevention Test",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200 or 409 (duplicate prevention)\", function () {",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 409]);",
+							"});",
+							"",
+							"pm.test(\"Response has appropriate status\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('status');",
+							"    // Should be either 'triggered' (new) or 'skipped' (duplicate)",
+							"    pm.expect(jsonData.status).to.be.oneOf(['triggered', 'skipped']);",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 2000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"reddit_post_id\": \"{{test_reddit_post_id}}\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/publish/trigger",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"publish",
+						"trigger"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Takedown Request - Valid",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200 or 404\", function () {",
+							"    // 200 if post exists and is published, 404 if not found",
+							"    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+							"});",
+							"",
+							"if (pm.response.code === 200) {",
+							"    pm.test(\"Response has status field\", function () {",
+							"        const jsonData = pm.response.json();",
+							"        pm.expect(jsonData).to.have.property('status');",
+							"        pm.expect(jsonData.status).to.eql('unpublished');",
+							"    });",
+							"    ",
+							"    pm.test(\"Response has message field\", function () {",
+							"        const jsonData = pm.response.json();",
+							"        pm.expect(jsonData).to.have.property('message');",
+							"        pm.expect(jsonData.message).to.include('deletion scheduled');",
+							"    });",
+							"}",
+							"",
+							"pm.test(\"Response time is less than 3000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(3000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"reason\": \"Copyright violation - smoke test\",\n    \"contact_email\": \"test@example.com\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/takedown/{{test_reddit_post_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"takedown",
+						"{{test_reddit_post_id}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Takedown Request - Invalid Email",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 422 (validation error)\", function () {",
+							"    pm.response.to.have.status(422);",
+							"});",
+							"",
+							"pm.test(\"Response has validation error details\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('detail');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 1000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(1000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"reason\": \"Test invalid email\",\n    \"contact_email\": \"invalid-email-format\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/v1/takedown/{{test_reddit_post_id}}",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"takedown",
+						"{{test_reddit_post_id}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Invalid Endpoint - 404 Test",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 404\", function () {",
+							"    pm.response.to.have.status(404);",
+							"});",
+							"",
+							"pm.test(\"Response has error details\", function () {",
+							"    const jsonData = pm.response.json();",
+							"    pm.expect(jsonData).to.have.property('detail');",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 1000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(1000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/api/v1/nonexistent-endpoint",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"v1",
+						"nonexistent-endpoint"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Invalid Method - 405 Test",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 405 (Method Not Allowed)\", function () {",
+							"    pm.response.to.have.status(405);",
+							"});",
+							"",
+							"pm.test(\"Response time is less than 1000ms\", function () {",
+							"    pm.expect(pm.response.responseTime).to.be.below(1000);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/health",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"health"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Set up test data if not already set",
+					"if (!pm.globals.get('test_reddit_post_id')) {",
+					"    pm.globals.set('test_reddit_post_id', 'smoke_test_' + Date.now());",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test to ensure all responses are JSON (except metrics)",
+					"if (pm.request.url.toString().includes('/metrics')) {",
+					"    // Metrics endpoint returns text/plain",
+					"    pm.test(\"Metrics endpoint returns text\", function () {",
+					"        pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain');",
+					"    });",
+					"} else {",
+					"    // All other endpoints should return JSON",
+					"    pm.test(\"Response is JSON\", function () {",
+					"        pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+					"    });",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "test_subreddit",
+			"value": "technology",
+			"type": "string"
+		},
+		{
+			"key": "test_batch_size",
+			"value": "5",
+			"type": "string"
+		},
+		{
+			"key": "test_reddit_post_id",
+			"value": "smoke_test_post_123",
+			"type": "string"
+		}
+	]
+}

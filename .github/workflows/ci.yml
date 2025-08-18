@@ -1,0 +1,448 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  PYTHON_VERSION: '3.12'
+  POETRY_VERSION: '1.7.1'
+
+jobs:
+  test:
+    name: Test Suite
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: reddit_publisher_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+    
+    - name: Install project
+      run: poetry install --no-interaction
+    
+    - name: Run database migrations
+      run: |
+        poetry run alembic upgrade head
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/reddit_publisher_test
+    
+    - name: Run unit tests
+      run: |
+        poetry run pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=90
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/reddit_publisher_test
+        REDIS_URL: redis://localhost:6379/0
+        TESTING: true
+    
+    - name: Run integration tests
+      run: |
+        poetry run pytest tests/integration/ -v
+      env:
+        DATABASE_URL: postgresql://test_user:test_password@localhost:5432/reddit_publisher_test
+        REDIS_URL: redis://localhost:6379/0
+        TESTING: true
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+    
+    - name: Install dependencies
+      run: poetry install --no-interaction --no-root
+    
+    - name: Run Bandit security scan
+      run: |
+        poetry run bandit -r app/ -f json -o bandit-report.json
+        poetry run bandit -r app/ -f txt
+    
+    - name: Run Safety check
+      run: |
+        poetry run safety check --json --output safety-report.json
+        poetry run safety check
+    
+    - name: Run Semgrep security scan
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/secrets
+          p/python
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+    
+    - name: Install dependencies
+      run: poetry install --no-interaction --no-root
+    
+    - name: Run Black formatter check
+      run: poetry run black --check app/ tests/
+    
+    - name: Run isort import sorting check
+      run: poetry run isort --check-only app/ tests/
+    
+    - name: Run flake8 linting
+      run: poetry run flake8 app/ tests/
+    
+    - name: Run mypy type checking
+      run: poetry run mypy app/
+    
+    - name: Run pylint
+      run: poetry run pylint app/ --output-format=json --reports=no > pylint-report.json || true
+    
+    - name: Upload code quality reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: code-quality-reports
+        path: pylint-report.json
+
+  build-images:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [test, security-scan, code-quality]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      if: github.event_name != 'pull_request'
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_USERNAME }}/reddit-publisher
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push API image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.api
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+    
+    - name: Build and push Worker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.worker
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ secrets.DOCKER_USERNAME }}/reddit-publisher-worker:${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+    
+    - name: Build and push Scheduler image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile.scheduler
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: ${{ secrets.DOCKER_USERNAME }}/reddit-publisher-scheduler:${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+
+  backup-restore-test:
+    name: Backup Restore Test
+    runs-on: ubuntu-latest
+    needs: test
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: reddit_publisher_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install PostgreSQL client tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client-15
+    
+    - name: Create backup directory
+      run: |
+        sudo mkdir -p /backups
+        sudo chmod 777 /backups
+    
+    - name: Set up test database with sample data
+      run: |
+        export PGPASSWORD=test_password
+        
+        # Create sample schema and data
+        psql -h localhost -U test_user -d reddit_publisher_test -c "
+          CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
+          
+          CREATE TABLE posts (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              reddit_post_id TEXT UNIQUE NOT NULL,
+              title TEXT NOT NULL,
+              subreddit TEXT NOT NULL,
+              score INTEGER DEFAULT 0,
+              num_comments INTEGER DEFAULT 0,
+              created_ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+              summary_ko TEXT,
+              tags JSONB,
+              pain_points JSONB,
+              product_ideas JSONB,
+              ghost_url TEXT,
+              content_hash TEXT,
+              takedown_status TEXT DEFAULT 'active',
+              created_at TIMESTAMPTZ DEFAULT NOW(),
+              updated_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          
+          CREATE TABLE media_files (
+              id SERIAL PRIMARY KEY,
+              post_id UUID REFERENCES posts(id),
+              original_url TEXT NOT NULL,
+              ghost_url TEXT,
+              file_type TEXT,
+              file_size INTEGER,
+              processed_at TIMESTAMPTZ,
+              created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          
+          CREATE TABLE processing_logs (
+              id SERIAL PRIMARY KEY,
+              post_id UUID REFERENCES posts(id),
+              service_name TEXT NOT NULL,
+              status TEXT NOT NULL,
+              error_message TEXT,
+              processing_time_ms INTEGER,
+              created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          
+          CREATE TABLE token_usage (
+              id SERIAL PRIMARY KEY,
+              post_id UUID REFERENCES posts(id),
+              service TEXT NOT NULL,
+              model TEXT NOT NULL,
+              input_tokens INTEGER DEFAULT 0,
+              output_tokens INTEGER DEFAULT 0,
+              cost_usd DECIMAL(10,6),
+              created_at TIMESTAMPTZ DEFAULT NOW()
+          );
+          
+          -- Create required indexes
+          CREATE UNIQUE INDEX idx_posts_reddit_post_id ON posts(reddit_post_id);
+          CREATE INDEX idx_posts_created_ts ON posts(created_ts);
+          CREATE INDEX idx_posts_subreddit ON posts(subreddit);
+          CREATE INDEX idx_processing_logs_post_id ON processing_logs(post_id);
+          CREATE INDEX idx_token_usage_created_at ON token_usage(created_at);
+          
+          -- Insert sample data
+          INSERT INTO posts (reddit_post_id, title, subreddit, score, num_comments, created_ts) VALUES
+          ('test_1', 'Test Post 1', 'programming', 100, 25, NOW()),
+          ('test_2', 'Test Post 2', 'technology', 200, 50, NOW()),
+          ('test_3', 'Test Post 3', 'python', 150, 30, NOW());
+        "
+    
+    - name: Create test backup
+      run: |
+        export PGPASSWORD=test_password
+        export PGHOST=localhost
+        export PGPORT=5432
+        export PGUSER=test_user
+        export PGDATABASE=reddit_publisher_test
+        
+        chmod +x scripts/backup-database.sh
+        ./scripts/backup-database.sh
+    
+    - name: Test backup restore functionality
+      run: |
+        export PGPASSWORD=test_password
+        export PGHOST=localhost
+        export PGPORT=5432
+        export PGUSER=test_user
+        export PGDATABASE=reddit_publisher_test
+        
+        chmod +x scripts/test-backup-restore.sh
+        ./scripts/test-backup-restore.sh --verbose
+
+  vulnerability-scan:
+    name: Container Vulnerability Scan
+    runs-on: ubuntu-latest
+    needs: build-images
+    if: github.event_name != 'pull_request'
+    
+    steps:
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ secrets.DOCKER_USERNAME }}/reddit-publisher:latest
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Run Trivy vulnerability scanner (table format)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ secrets.DOCKER_USERNAME }}/reddit-publisher:latest
+        format: 'table'
+        exit-code: '1'
+        ignore-unfixed: true
+        vuln-type: 'os,library'
+        severity: 'CRITICAL,HIGH'
+
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [test, security-scan, code-quality, build-images, backup-restore-test, vulnerability-scan]
+    if: always()
+    
+    steps:
+    - name: Notify Slack on success
+      if: ${{ needs.test.result == 'success' && needs.security-scan.result == 'success' && needs.code-quality.result == 'success' && needs.build-images.result == 'success' && needs.backup-restore-test.result == 'success' }}
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#ci-cd'
+        text: '✅ CI Pipeline passed for ${{ github.ref }} (including backup restore test)'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Notify Slack on failure
+      if: ${{ needs.test.result == 'failure' || needs.security-scan.result == 'failure' || needs.code-quality.result == 'failure' || needs.build-images.result == 'failure' || needs.backup-restore-test.result == 'failure' }}
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#ci-cd'
+        text: '❌ CI Pipeline failed for ${{ github.ref }}'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

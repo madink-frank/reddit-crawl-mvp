@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block title %}설정 - Reddit Ghost Publisher{% endblock %}
+{% block header %}시스템 설정{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- 환경 변수 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-cog"></i> 환경 변수
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>변수명</th>
+                                <th>값</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for key, value in env_vars.items() %}
+                            <tr>
+                                <td><code>{{ key }}</code></td>
+                                <td>
+                                    {% if value %}
+                                        <span class="text-success">{{ value }}</span>
+                                    {% else %}
+                                        <span class="text-muted">미설정</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>참고:</strong> 환경 변수 변경은 시스템 재시작이 필요합니다.
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- API 키 상태 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-key"></i> API 키 상태
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="apiKeyStatus">
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">확인 중...</span>
+                        </div>
+                        <span class="ms-2">API 키 상태 확인 중...</span>
+                    </div>
+                </div>
+                <button class="btn btn-outline-primary btn-sm mt-3" onclick="checkApiKeys()">
+                    <i class="fas fa-sync-alt"></i> 다시 확인
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 시스템 정보 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-server"></i> 시스템 정보
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="systemInfo">
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">로딩 중...</span>
+                        </div>
+                        <span class="ms-2">시스템 정보 로딩 중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 데이터베이스 정보 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-database"></i> 데이터베이스 정보
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="databaseInfo">
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">로딩 중...</span>
+                        </div>
+                        <span class="ms-2">데이터베이스 정보 로딩 중...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 설정 변경 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-edit"></i> 설정 변경
+                    <span class="badge bg-warning">개발 중</span>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>주의:</strong> 설정 변경 기능은 현재 개발 중입니다.
+                </div>
+                
+                <form id="settingsForm">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="batchSizeSetting" class="form-label">기본 배치 크기</label>
+                            <input type="number" class="form-control" id="batchSizeSetting" 
+                                   value="{{ env_vars.BATCH_SIZE }}" min="1" max="100" disabled>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="collectCronSetting" class="form-label">수집 스케줄 (Cron)</label>
+                            <input type="text" class="form-control" id="collectCronSetting" 
+                                   value="{{ env_vars.COLLECT_CRON }}" disabled>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="subredditsSetting" class="form-label">기본 서브레딧</label>
+                        <input type="text" class="form-control" id="subredditsSetting" 
+                               value="{{ env_vars.SUBREDDITS }}" 
+                               placeholder="programming,technology,webdev" disabled>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary" disabled>
+                        <i class="fas fa-save"></i> 설정 저장
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" disabled>
+                        <i class="fas fa-undo"></i> 초기화
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 시스템 액션 -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools"></i> 시스템 액션
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-info w-100" onclick="testConnections()">
+                            <i class="fas fa-plug"></i> 연결 테스트
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-warning w-100" onclick="clearCache()">
+                            <i class="fas fa-broom"></i> 캐시 정리
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-secondary w-100" onclick="exportSettings()">
+                            <i class="fas fa-download"></i> 설정 내보내기
+                        </button>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <button class="btn btn-outline-primary w-100" onclick="viewDocumentation()">
+                            <i class="fas fa-book"></i> 문서 보기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 페이지 로드 시 정보 로딩
+document.addEventListener('DOMContentLoaded', function() {
+    checkApiKeys();
+    loadSystemInfo();
+    loadDatabaseInfo();
+});
+
+function checkApiKeys() {
+    const statusDiv = document.getElementById('apiKeyStatus');
+    statusDiv.innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border spinner-border-sm" role="status">
+                <span class="visually-hidden">확인 중...</span>
+            </div>
+            <span class="ms-2">API 키 상태 확인 중...</span>
+        </div>
+    `;
+    
+    fetch('/api/status')
+    .then(response => response.json())
+    .then(data => {
+        let html = '<div class="list-group list-group-flush">';
+        
+        if (data.services) {
+            const apiServices = {
+                'reddit_api': 'Reddit API',
+                'openai_api': 'OpenAI API',
+                'ghost_api': 'Ghost CMS API'
+            };
+            
+            Object.entries(apiServices).forEach(([key, name]) => {
+                const service = data.services[key];
+                if (service) {
+                    const statusClass = service.status === 'healthy' ? 'success' : 
+                                      service.status === 'degraded' ? 'warning' : 'danger';
+                    const icon = service.status === 'healthy' ? 'check-circle' : 
+                               service.status === 'degraded' ? 'exclamation-triangle' : 'times-circle';
+                    
+                    html += `
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <span>
+                                <i class="fas fa-${icon} text-${statusClass}"></i>
+                                ${name}
+                            </span>
+                            <span class="badge bg-${statusClass}">${service.status}</span>
+                        </div>
+                    `;
+                }
+            });
+        }
+        
+        html += '</div>';
+        statusDiv.innerHTML = html;
+    })
+    .catch(error => {
+        statusDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i>
+                API 키 상태 확인 실패: ${error.message}
+            </div>
+        `;
+    });
+}
+
+function loadSystemInfo() {
+    const infoDiv = document.getElementById('systemInfo');
+    
+    // 시뮬레이션된 시스템 정보
+    setTimeout(() => {
+        infoDiv.innerHTML = `
+            <div class="row">
+                <div class="col-6">
+                    <strong>Python 버전:</strong><br>
+                    <span class="text-muted">3.12.x</span>
+                </div>
+                <div class="col-6">
+                    <strong>Flask 버전:</strong><br>
+                    <span class="text-muted">2.3.x</span>
+                </div>
+                <div class="col-6 mt-2">
+                    <strong>운영체제:</strong><br>
+                    <span class="text-muted">macOS</span>
+                </div>
+                <div class="col-6 mt-2">
+                    <strong>업타임:</strong><br>
+                    <span class="text-muted">실행 중</span>
+                </div>
+            </div>
+        `;
+    }, 1000);
+}
+
+function loadDatabaseInfo() {
+    const infoDiv = document.getElementById('databaseInfo');
+    
+    fetch('/api/stats')
+    .then(response => response.json())
+    .then(data => {
+        if (data) {
+            infoDiv.innerHTML = `
+                <div class="row">
+                    <div class="col-6">
+                        <strong>총 포스트:</strong><br>
+                        <span class="text-primary">${data.total_posts || 0}</span>
+                    </div>
+                    <div class="col-6">
+                        <strong>처리 완료:</strong><br>
+                        <span class="text-success">${data.ai_processed || 0}</span>
+                    </div>
+                    <div class="col-6 mt-2">
+                        <strong>발행 완료:</strong><br>
+                        <span class="text-info">${data.published || 0}</span>
+                    </div>
+                    <div class="col-6 mt-2">
+                        <strong>활성 포스트:</strong><br>
+                        <span class="text-warning">${data.active_posts || 0}</span>
+                    </div>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        infoDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i>
+                데이터베이스 정보 로딩 실패: ${error.message}
+            </div>
+        `;
+    });
+}
+
+function testConnections() {
+    showAlert('info', '연결 테스트를 시작합니다...');
+    
+    fetch('/api/status')
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'healthy') {
+            showAlert('success', '모든 연결이 정상입니다.');
+        } else {
+            showAlert('warning', `일부 서비스에 문제가 있습니다: ${data.status}`);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', `연결 테스트 실패: ${error.message}`);
+    });
+}
+
+function clearCache() {
+    showAlert('info', '캐시 정리 기능은 개발 중입니다.');
+}
+
+function exportSettings() {
+    const settings = {
+        timestamp: new Date().toISOString(),
+        environment_variables: {{ env_vars | tojson }},
+        system_info: {
+            python_version: '3.12.x',
+            flask_version: '2.3.x',
+            os: 'macOS'
+        }
+    };
+    
+    const blob = new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `reddit_publisher_settings_${new Date().toISOString().split('T')[0]}.json`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showAlert('success', '설정이 내보내기되었습니다.');
+}
+
+function viewDocumentation() {
+    window.open('https://github.com/your-repo/reddit-ghost-publisher/wiki', '_blank');
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('main');
+    container.insertBefore(alertDiv, container.firstChild.nextSibling);
+    
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}

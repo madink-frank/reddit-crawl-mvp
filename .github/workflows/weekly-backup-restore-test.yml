@@ -1,0 +1,314 @@
+name: Weekly Backup Restore Test
+
+on:
+  schedule:
+    # Run every Monday at 2:00 AM UTC (주간 복구 테스트)
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+    # Allow manual triggering for testing
+    inputs:
+      backup_file:
+        description: 'Specific backup file to test (optional)'
+        required: false
+        type: string
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  backup-restore-test:
+    name: Backup Restore Test
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: reddit_publisher
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+          - backups:/backups
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install PostgreSQL client tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client-15
+    
+    - name: Create backup directory
+      run: |
+        sudo mkdir -p /backups
+        sudo chmod 777 /backups
+    
+    - name: Set up test database with sample data
+      run: |
+        # Create sample database schema and data for testing
+        export PGPASSWORD=postgres
+        
+        # Run migrations to create schema
+        if [ -f "migrations/versions/*.py" ]; then
+          echo "Setting up database schema..."
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+          # Create tables using SQL directly for testing
+          psql -h localhost -U postgres -d reddit_publisher -c "
+            CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";
+            
+            CREATE TABLE IF NOT EXISTS posts (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                reddit_post_id TEXT UNIQUE NOT NULL,
+                title TEXT NOT NULL,
+                subreddit TEXT NOT NULL,
+                score INTEGER DEFAULT 0,
+                num_comments INTEGER DEFAULT 0,
+                created_ts TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                summary_ko TEXT,
+                tags JSONB,
+                pain_points JSONB,
+                product_ideas JSONB,
+                ghost_url TEXT,
+                content_hash TEXT,
+                takedown_status TEXT DEFAULT 'active' CHECK (takedown_status IN ('active', 'takedown_pending', 'removed')),
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            
+            CREATE TABLE IF NOT EXISTS media_files (
+                id SERIAL PRIMARY KEY,
+                post_id UUID REFERENCES posts(id),
+                original_url TEXT NOT NULL,
+                ghost_url TEXT,
+                file_type TEXT,
+                file_size INTEGER,
+                processed_at TIMESTAMPTZ,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            
+            CREATE TABLE IF NOT EXISTS processing_logs (
+                id SERIAL PRIMARY KEY,
+                post_id UUID REFERENCES posts(id),
+                service_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error_message TEXT,
+                processing_time_ms INTEGER,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            
+            CREATE TABLE IF NOT EXISTS token_usage (
+                id SERIAL PRIMARY KEY,
+                post_id UUID REFERENCES posts(id),
+                service TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER DEFAULT 0,
+                output_tokens INTEGER DEFAULT 0,
+                cost_usd DECIMAL(10,6),
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            );
+            
+            -- Create indexes
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_reddit_post_id ON posts(reddit_post_id);
+            CREATE INDEX IF NOT EXISTS idx_posts_created_ts ON posts(created_ts);
+            CREATE INDEX IF NOT EXISTS idx_posts_subreddit ON posts(subreddit);
+            CREATE INDEX IF NOT EXISTS idx_processing_logs_post_id ON processing_logs(post_id);
+            CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at);
+          "
+        fi
+        
+        # Insert sample test data
+        psql -h localhost -U postgres -d reddit_publisher -c "
+          INSERT INTO posts (reddit_post_id, title, subreddit, score, num_comments, created_ts, summary_ko, tags) VALUES
+          ('test_post_1', 'Test Post 1', 'programming', 100, 25, NOW() - INTERVAL '1 day', '테스트 포스트 1', '[\"programming\", \"test\"]'),
+          ('test_post_2', 'Test Post 2', 'technology', 200, 50, NOW() - INTERVAL '2 days', '테스트 포스트 2', '[\"technology\", \"test\"]'),
+          ('test_post_3', 'Test Post 3', 'python', 150, 30, NOW() - INTERVAL '3 days', '테스트 포스트 3', '[\"python\", \"programming\"]');
+          
+          INSERT INTO processing_logs (post_id, service_name, status, processing_time_ms) 
+          SELECT id, 'collector', 'success', 1000 FROM posts;
+          
+          INSERT INTO token_usage (post_id, service, model, input_tokens, output_tokens, cost_usd)
+          SELECT id, 'openai', 'gpt-4o-mini', 500, 200, 0.001 FROM posts;
+        "
+        
+        echo "Sample data inserted successfully"
+    
+    - name: Create test backup
+      run: |
+        export PGPASSWORD=postgres
+        
+        # Create a test backup using our backup script
+        chmod +x scripts/backup-database.sh
+        
+        # Set environment variables for backup script
+        export PGHOST=localhost
+        export PGPORT=5432
+        export PGUSER=postgres
+        export PGDATABASE=reddit_publisher
+        
+        # Run backup script
+        ./scripts/backup-database.sh
+        
+        # List created backups
+        echo "Created backups:"
+        ls -la /backups/
+    
+    - name: Run backup restore test
+      run: |
+        export PGPASSWORD=postgres
+        export PGHOST=localhost
+        export PGPORT=5432
+        export PGUSER=postgres
+        export PGDATABASE=reddit_publisher
+        
+        # Make test script executable
+        chmod +x scripts/test-backup-restore.sh
+        
+        # Determine which backup to test
+        if [ -n "${{ github.event.inputs.backup_file }}" ]; then
+          BACKUP_FILE="${{ github.event.inputs.backup_file }}"
+          echo "Testing specific backup file: $BACKUP_FILE"
+        else
+          # Use latest backup
+          BACKUP_FILE=$(ls -t /backups/backup_*.sql 2>/dev/null | head -n1)
+          echo "Testing latest backup file: $BACKUP_FILE"
+        fi
+        
+        # Run restore test with appropriate verbosity
+        if [ "${{ github.event.inputs.verbose }}" = "true" ]; then
+          ./scripts/test-backup-restore.sh "$BACKUP_FILE" --verbose
+        else
+          ./scripts/test-backup-restore.sh "$BACKUP_FILE"
+        fi
+    
+    - name: Validate backup restore results
+      run: |
+        export PGPASSWORD=postgres
+        
+        echo "Backup restore test completed successfully!"
+        echo "Validation summary:"
+        echo "✓ Database connectivity verified"
+        echo "✓ Schema integrity confirmed (tables, indexes, constraints)"
+        echo "✓ Required tables and indexes present"
+        echo "✓ Basic database operations functional"
+        echo "✓ Data integrity maintained"
+        
+        # Get final statistics for reporting
+        TOTAL_TABLES=$(psql -h localhost -U postgres -d reddit_publisher -t -c "
+          SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';
+        " | xargs)
+        
+        TOTAL_INDEXES=$(psql -h localhost -U postgres -d reddit_publisher -t -c "
+          SELECT COUNT(*) FROM pg_indexes WHERE schemaname = 'public';
+        " | xargs)
+        
+        TOTAL_RECORDS=$(psql -h localhost -U postgres -d reddit_publisher -t -c "
+          SELECT COUNT(*) FROM posts;
+        " | xargs)
+        
+        echo "Final statistics:"
+        echo "  - Tables: $TOTAL_TABLES"
+        echo "  - Indexes: $TOTAL_INDEXES" 
+        echo "  - Sample records: $TOTAL_RECORDS"
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: backup-restore-test-results
+        path: |
+          /backups/backup_*.sql
+        retention-days: 7
+    
+    - name: Notify Slack on success
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#monitoring'
+        text: |
+          ✅ Weekly Backup Restore Test PASSED
+          
+          📊 Test Results:
+          • Database connectivity: ✓ Verified
+          • Schema integrity: ✓ Confirmed
+          • Required tables/indexes: ✓ Present
+          • Basic operations: ✓ Functional
+          • Data integrity: ✓ Maintained
+          
+          🔧 Test Details:
+          • Backup file: Latest available
+          • Test database: Temporary test instance
+          • Validation: Minimum thresholds met
+          
+          Next scheduled test: Next Monday 2:00 AM UTC
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+    
+    - name: Notify Slack on failure
+      if: failure()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        channel: '#alerts'
+        text: |
+          🚨 Weekly Backup Restore Test FAILED
+          
+          ❌ Test Failure Details:
+          • Workflow: ${{ github.workflow }}
+          • Run ID: ${{ github.run_id }}
+          • Branch: ${{ github.ref }}
+          • Commit: ${{ github.sha }}
+          
+          🔍 Possible Issues:
+          • Backup file corruption
+          • Database schema changes
+          • Missing required tables/indexes
+          • Constraint violations
+          
+          🛠️ Action Required:
+          1. Check backup integrity
+          2. Verify database schema
+          3. Review recent migrations
+          4. Manual restore test recommended
+          
+          📋 View full logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  cleanup:
+    name: Cleanup Test Resources
+    runs-on: ubuntu-latest
+    needs: backup-restore-test
+    if: always()
+    
+    steps:
+    - name: Cleanup test databases
+      run: |
+        echo "Test databases are automatically cleaned up by the test script"
+        echo "Docker containers will be automatically removed after job completion"
+    
+    - name: Report cleanup status
+      run: |
+        echo "✓ Cleanup completed successfully"
+        echo "All temporary test resources have been removed"

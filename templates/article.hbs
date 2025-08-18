@@ -1,0 +1,50 @@
+{{!-- Article Template for Ghost CMS (MVP Version) --}}
+{{!-- Fixed section order: 제목, 요약, 핵심 인사이트, 원문 링크 --}}
+<article class="reddit-article">
+    <header>
+        <h1>{{title}}</h1>
+        <div class="meta">
+            <span class="subreddit">r/{{subreddit}}</span>
+            <span class="score">{{score}} points</span>
+            <span class="comments">{{comments}} comments</span>
+        </div>
+    </header>
+
+    <div class="content">
+        {{!-- 1. 요약 (Summary) --}}
+        {{#if summary_ko}}
+        <section class="summary">
+            <h2>요약</h2>
+            <p>{{summary_ko}}</p>
+        </section>
+        {{/if}}
+
+        {{!-- 2. 핵심 인사이트 (Pain Points & Product Ideas) --}}
+        {{#if pain_points}}
+        <section class="insights">
+            <h2>핵심 인사이트</h2>
+            <ul>
+                {{#each pain_points}}
+                <li>{{this}}</li>
+                {{/each}}
+            </ul>
+        </section>
+        {{/if}}
+
+        {{#if product_ideas}}
+        <section class="product-ideas">
+            <h2>제품 아이디어</h2>
+            <ul>
+                {{#each product_ideas}}
+                <li>{{this}}</li>
+                {{/each}}
+            </ul>
+        </section>
+        {{/if}}
+
+        {{!-- 3. 원문 링크 --}}
+        <section class="original-link">
+            <p><strong>원문:</strong> <a href="{{url}}" target="_blank" rel="noopener">Reddit에서 보기</a></p>
+        </section>
+    </div>
+</article>

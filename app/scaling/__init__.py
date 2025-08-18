@@ -1,0 +1,1 @@
+# Auto-scaling module for Reddit Ghost Publisher

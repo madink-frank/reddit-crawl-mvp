@@ -1,0 +1,89 @@
+name: Load Testing
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL for load testing'
+        required: true
+        default: 'https://api.example.com'
+      duration:
+        description: 'Test duration in seconds'
+        required: true
+        default: '1800'
+      users:
+        description: 'Number of concurrent users'
+        required: true
+        default: '100'
+
+jobs:
+  load-test:
+    name: Run Load Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: '1.7.1'
+    
+    - name: Install dependencies
+      run: poetry install --no-interaction --no-root
+    
+    - name: Run Locust load tests
+      run: |
+        poetry run locust \
+          --host=${{ github.event.inputs.target_url }} \
+          --users=${{ github.event.inputs.users }} \
+          --spawn-rate=10 \
+          --run-time=${{ github.event.inputs.duration }}s \
+          --headless \
+          --html=load-test-report.html \
+          --csv=load-test-results \
+          -f tests/load/locustfile.py
+    
+    - name: Upload load test results
+      uses: actions/upload-artifact@v3
+      with:
+        name: load-test-results
+        path: |
+          load-test-report.html
+          load-test-results_*.csv
+    
+    - name: Analyze results
+      run: |
+        poetry run python tests/load/analyze_results.py load-test-results_stats.csv
+    
+    - name: Comment PR with results
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = 'load-test-analysis.md';
+          if (fs.existsSync(path)) {
+            const analysis = fs.readFileSync(path, 'utf8');
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## Load Test Results\n\n${analysis}`
+            });
+          }
+    
+    - name: Notify Slack
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#performance'
+        text: 'Load test completed for ${{ github.event.inputs.target_url }}'
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

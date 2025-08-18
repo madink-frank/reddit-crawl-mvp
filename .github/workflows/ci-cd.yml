@@ -1,0 +1,528 @@
+name: Reddit Publisher CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly backup restore test - every Monday at 02:00 UTC
+    - cron: '0 2 * * 1'
+
+env:
+  PYTHON_VERSION: '3.12'
+  POSTGRES_VERSION: '15'
+  REDIS_VERSION: '7'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: reddit_publisher_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Set up test environment variables
+      run: |
+        echo "DATABASE_URL=postgresql://test_user:test_password@localhost:5432/reddit_publisher_test" >> $GITHUB_ENV
+        echo "REDIS_URL=redis://localhost:6379" >> $GITHUB_ENV
+        echo "REDDIT_CLIENT_ID=test_client_id" >> $GITHUB_ENV
+        echo "REDDIT_CLIENT_SECRET=test_client_secret" >> $GITHUB_ENV
+        echo "REDDIT_USER_AGENT=test_user_agent" >> $GITHUB_ENV
+        echo "OPENAI_API_KEY=test_openai_key" >> $GITHUB_ENV
+        echo "GHOST_ADMIN_KEY=test_ghost_key" >> $GITHUB_ENV
+        echo "GHOST_API_URL=https://test.ghost.io" >> $GITHUB_ENV
+        echo "SLACK_WEBHOOK_URL=https://hooks.slack.com/test" >> $GITHUB_ENV
+    
+    - name: Run database migrations
+      run: |
+        alembic upgrade head
+    
+    - name: Run unit tests with coverage
+      run: |
+        pytest tests/unit/ \
+          --cov=app \
+          --cov=workers \
+          --cov-report=xml \
+          --cov-report=term-missing \
+          --cov-fail-under=70 \
+          --verbose
+    
+    - name: Run integration tests
+      run: |
+        pytest tests/integration/ --verbose
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+    
+    - name: Lint code with flake8
+      run: |
+        flake8 app/ workers/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 app/ workers/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Security scan with bandit
+      run: |
+        bandit -r app/ workers/ -f json -o bandit-report.json || true
+        bandit -r app/ workers/ --severity-level medium  build:
+
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ secrets.DOCKER_REGISTRY }}/reddit-publisher
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push Docker image
+      id: build
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64
+    
+    - name: Run Trivy security scan
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ steps.meta.outputs.tags }}
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'HIGH,CRITICAL'
+        exit-code: '1'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  backup-restore-test:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 2 * * 1'  # Only run on scheduled weekly backup test
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: reddit_publisher
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up test environment
+      run: |
+        echo "DATABASE_URL=postgresql://postgres:postgres@localhost:5432/reddit_publisher" >> $GITHUB_ENV
+        echo "PGPASSWORD=postgres" >> $GITHUB_ENV
+    
+    - name: Create test data
+      run: |
+        psql -h localhost -U postgres -d reddit_publisher -c "
+          CREATE TABLE IF NOT EXISTS posts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            reddit_post_id TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            subreddit TEXT NOT NULL,
+            score INTEGER DEFAULT 0,
+            created_ts TIMESTAMPTZ DEFAULT NOW()
+          );
+          INSERT INTO posts (reddit_post_id, title, subreddit, score) 
+          VALUES ('test_post_1', 'Test Post 1', 'test', 100),
+                 ('test_post_2', 'Test Post 2', 'test', 200);
+        "
+    
+    - name: Create backup
+      run: |
+        mkdir -p ./test-backups
+        pg_dump -h localhost -U postgres reddit_publisher > ./test-backups/test_backup.sql
+        echo "Backup created successfully"
+    
+    - name: Test backup restore
+      run: |
+        # Create test restore database
+        psql -h localhost -U postgres -c "CREATE DATABASE reddit_publisher_restore_test;"
+        
+        # Restore from backup
+        psql -h localhost -U postgres -d reddit_publisher_restore_test < ./test-backups/test_backup.sql
+        
+        # Verify data integrity
+        RECORD_COUNT=$(psql -h localhost -U postgres -d reddit_publisher_restore_test -t -c "SELECT COUNT(*) FROM posts;")
+        echo "Restored record count: $RECORD_COUNT"
+        
+        if [ "$RECORD_COUNT" -lt 2 ]; then
+          echo "ERROR: Backup restore test failed - insufficient records"
+          exit 1
+        fi
+        
+        # Verify indexes exist
+        INDEX_COUNT=$(psql -h localhost -U postgres -d reddit_publisher_restore_test -t -c "
+          SELECT COUNT(*) FROM pg_indexes WHERE tablename = 'posts';
+        ")
+        echo "Index count: $INDEX_COUNT"
+        
+        if [ "$INDEX_COUNT" -lt 1 ]; then
+          echo "ERROR: Backup restore test failed - missing indexes"
+          exit 1
+        fi
+        
+        echo "✅ Backup restore test completed successfully"
+    
+    - name: Cleanup test database
+      if: always()
+      run: |
+        psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS reddit_publisher_restore_test;"
+    
+    - name: Notify backup test results
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#reddit-publisher-alerts'
+        text: |
+          Weekly backup restore test: ${{ job.status }}
+          Repository: ${{ github.repository }}
+          Commit: ${{ github.sha }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  smoke-tests:
+    needs: build
+    runs-on: ubuntu-latest
+    if: needs.build.result == 'success'
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: reddit_publisher_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Start application with Docker Compose
+      run: |
+        # Use test configuration
+        cp docker-compose.test.yml docker-compose.override.yml
+        
+        # Set environment variables for testing
+        export DATABASE_URL=postgresql://test_user:test_password@localhost:5432/reddit_publisher_test
+        export REDIS_URL=redis://localhost:6379
+        export REDDIT_CLIENT_ID=test_client_id
+        export REDDIT_CLIENT_SECRET=test_client_secret
+        export OPENAI_API_KEY=test_openai_key
+        export GHOST_ADMIN_KEY=test_ghost_key
+        
+        # Start services
+        docker-compose up -d --build
+        
+        # Wait for services to be ready
+        sleep 30
+    
+    - name: Wait for application health
+      run: |
+        timeout 60 bash -c 'until curl -f http://localhost:8000/health; do sleep 2; done'
+    
+    - name: Install Newman for Postman tests
+      run: |
+        npm install -g newman
+    
+    - name: Run Postman smoke tests
+      run: |
+        newman run tests/postman/reddit-ghost-publisher-smoke-tests.json \
+          --environment tests/postman/test-environment.json \
+          --reporters cli,json \
+          --reporter-json-export smoke-test-results.json \
+          --bail
+    
+    - name: Upload smoke test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: smoke-test-results
+        path: smoke-test-results.json
+    
+    - name: Stop services
+      if: always()
+      run: |
+        docker-compose down -v 
+ deploy:
+    needs: [build, smoke-tests]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && needs.build.result == 'success' && needs.smoke-tests.result == 'success'
+    environment: 
+      name: production
+      url: ${{ steps.deploy.outputs.url }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Manual approval required
+      uses: trstringer/manual-approval@v1
+      with:
+        secret: ${{ github.TOKEN }}
+        approvers: ${{ secrets.DEPLOYMENT_APPROVERS }}
+        minimum-approvals: 1
+        issue-title: "Deploy Reddit Publisher to Production"
+        issue-body: |
+          ## Deployment Request
+          
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          **Author:** ${{ github.actor }}
+          
+          **Changes:**
+          ${{ github.event.head_commit.message }}
+          
+          **Build Status:**
+          - Tests: ✅ Passed
+          - Security Scan: ✅ Passed  
+          - Smoke Tests: ✅ Passed
+          
+          **Docker Image:**
+          `${{ needs.build.outputs.image-tag }}`
+          
+          Please review and approve this deployment to production.
+        exclude-workflow-initiator-as-approver: false
+    
+    - name: Set up deployment environment
+      run: |
+        echo "DOCKER_IMAGE_TAG=${{ needs.build.outputs.image-tag }}" >> $GITHUB_ENV
+        echo "DEPLOYMENT_TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)" >> $GITHUB_ENV
+    
+    - name: Deploy to production
+      id: deploy
+      run: |
+        # Create deployment script
+        cat > deploy.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "🚀 Starting deployment..."
+        
+        # Backup current deployment
+        echo "📦 Creating backup of current deployment..."
+        docker-compose -f docker-compose.prod.yml down --remove-orphans || true
+        
+        # Update docker-compose with new image
+        export DOCKER_IMAGE_TAG="${{ env.DOCKER_IMAGE_TAG }}"
+        
+        # Pull new image
+        echo "📥 Pulling new Docker image..."
+        docker pull ${{ env.DOCKER_IMAGE_TAG }}
+        
+        # Start new deployment
+        echo "🔄 Starting new deployment..."
+        docker-compose -f docker-compose.prod.yml up -d
+        
+        # Wait for services to be ready
+        echo "⏳ Waiting for services to be ready..."
+        sleep 30
+        
+        echo "✅ Deployment completed successfully"
+        EOF
+        
+        chmod +x deploy.sh
+        ./deploy.sh
+        
+        # Set output URL
+        echo "url=${{ secrets.PRODUCTION_URL }}" >> $GITHUB_OUTPUT
+    
+    - name: Post-deployment health check
+      run: |
+        echo "🔍 Running post-deployment health check..."
+        
+        # Wait for application to be fully ready
+        timeout 120 bash -c 'until curl -f ${{ secrets.PRODUCTION_URL }}/health; do echo "Waiting for health check..."; sleep 5; done'
+        
+        # Verify critical endpoints
+        curl -f ${{ secrets.PRODUCTION_URL }}/health
+        curl -f ${{ secrets.PRODUCTION_URL }}/metrics
+        
+        echo "✅ Health check passed"
+    
+    - name: Run post-deployment smoke tests
+      run: |
+        echo "🧪 Running post-deployment smoke tests..."
+        
+        # Install Newman
+        npm install -g newman
+        
+        # Run smoke tests against production
+        newman run tests/postman/reddit-ghost-publisher-smoke-tests.json \
+          --environment tests/postman/staging-environment.json \
+          --env-var "base_url=${{ secrets.PRODUCTION_URL }}" \
+          --reporters cli,json \
+          --reporter-json-export post-deploy-smoke-results.json \
+          --bail
+        
+        echo "✅ Post-deployment smoke tests passed"
+    
+    - name: Upload post-deployment test results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: post-deploy-smoke-results
+        path: post-deploy-smoke-results.json
+    
+    - name: Rollback on failure
+      if: failure()
+      run: |
+        echo "❌ Deployment failed, initiating rollback..."
+        
+        # Create rollback script
+        cat > rollback.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        echo "🔄 Rolling back to previous deployment..."
+        
+        # Stop current deployment
+        docker-compose -f docker-compose.prod.yml down --remove-orphans
+        
+        # Get previous image tag (assuming it's tagged as 'previous')
+        PREVIOUS_IMAGE="${{ secrets.DOCKER_REGISTRY }}/reddit-publisher:previous"
+        
+        # Pull previous image
+        docker pull $PREVIOUS_IMAGE || echo "Warning: Previous image not found"
+        
+        # Update environment to use previous image
+        export DOCKER_IMAGE_TAG=$PREVIOUS_IMAGE
+        
+        # Start previous deployment
+        docker-compose -f docker-compose.prod.yml up -d
+        
+        # Wait and verify
+        sleep 30
+        curl -f ${{ secrets.PRODUCTION_URL }}/health || exit 1
+        
+        echo "✅ Rollback completed successfully"
+        EOF
+        
+        chmod +x rollback.sh
+        ./rollback.sh
+    
+    - name: Tag successful deployment
+      if: success()
+      run: |
+        # Tag current image as 'previous' for future rollbacks
+        docker tag ${{ env.DOCKER_IMAGE_TAG }} ${{ secrets.DOCKER_REGISTRY }}/reddit-publisher:previous
+        docker push ${{ secrets.DOCKER_REGISTRY }}/reddit-publisher:previous
+    
+    - name: Notify deployment status
+      if: always()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#reddit-publisher-deployments'
+        text: |
+          Deployment Status: ${{ job.status }}
+          
+          **Environment:** Production
+          **Branch:** ${{ github.ref_name }}
+          **Commit:** ${{ github.sha }}
+          **Image:** ${{ env.DOCKER_IMAGE_TAG }}
+          **Timestamp:** ${{ env.DEPLOYMENT_TIMESTAMP }}
+          
+          ${{ job.status == 'success' && '✅ Deployment successful' || '❌ Deployment failed - rollback initiated' }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

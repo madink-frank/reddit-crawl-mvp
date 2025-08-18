@@ -1,0 +1,18 @@
+{
+  "name": "reddit-ghost-publisher-api",
+  "version": "1.0.0",
+  "description": "Reddit Ghost Publisher API - Serverless Functions",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build",
+    "deploy": "vercel --prod"
+  },
+  "keywords": ["reddit", "ghost", "publisher", "api", "serverless"],
+  "author": "Frank Cha",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "@vercel/node": "^3.0.0"
+  }
+}

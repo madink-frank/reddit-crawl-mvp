@@ -1,0 +1,37 @@
+{
+	"id": "reddit-ghost-publisher-staging-env",
+	"name": "Reddit Ghost Publisher - Staging Environment",
+	"values": [
+		{
+			"key": "base_url",
+			"value": "https://staging-api.reddit-ghost-publisher.com",
+			"description": "Base URL for the staging Reddit Ghost Publisher API",
+			"enabled": true
+		},
+		{
+			"key": "test_subreddit",
+			"value": "test",
+			"description": "Subreddit to use for staging testing",
+			"enabled": true
+		},
+		{
+			"key": "test_batch_size",
+			"value": "3",
+			"description": "Smaller batch size for staging testing",
+			"enabled": true
+		},
+		{
+			"key": "test_reddit_post_id",
+			"value": "staging_test_post_123",
+			"description": "Test Reddit post ID for staging tests",
+			"enabled": true
+		},
+		{
+			"key": "api_timeout",
+			"value": "10000",
+			"description": "API timeout in milliseconds for staging",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment"
+}

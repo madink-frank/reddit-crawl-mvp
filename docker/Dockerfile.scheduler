@@ -1,0 +1,64 @@
+# Multi-stage Dockerfile for Celery Beat Scheduler
+FROM python:3.12-slim as base
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Create app user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Set work directory
+WORKDIR /app
+
+# Copy requirements first for better Docker layer caching
+COPY requirements.txt ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Development stage
+FROM base as development
+COPY requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY . .
+RUN chown -R appuser:appuser /app
+USER appuser
+
+CMD ["celery", "-A", "app.celery_app", "beat", "--loglevel=info"]
+
+# Production stage
+FROM base as production
+
+# Copy only necessary application files
+COPY app/ ./app/
+COPY workers/ ./workers/
+COPY alembic.ini ./
+COPY migrations/ ./migrations/
+
+# Create directory for beat schedule file
+RUN mkdir -p /app/celerybeat && \
+    chown -R appuser:appuser /app
+
+# Switch to non-root user for security
+USER appuser
+
+# Health check for scheduler
+HEALTHCHECK --interval=60s --timeout=30s --start-period=10s --retries=3 \
+    CMD pgrep -f "celery.*beat" || exit 1
+
+# Run Celery Beat scheduler
+CMD ["celery", "-A", "app.celery_app", "beat", "--loglevel=info", "--schedule=/app/celerybeat/schedule"]

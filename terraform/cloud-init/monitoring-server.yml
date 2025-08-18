@@ -1,0 +1,312 @@
+#cloud-config
+# Cloud-init configuration for Reddit Ghost Publisher monitoring server
+
+# Update system packages
+package_update: true
+package_upgrade: true
+
+# Install required packages
+packages:
+  - curl
+  - wget
+  - git
+  - htop
+  - unzip
+  - jq
+  - fail2ban
+  - ufw
+  - logrotate
+  - cron
+  - rsync
+  - nginx
+
+# Create monitoring user
+users:
+  - name: monitoring
+    groups: docker, sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+
+# Configure firewall for monitoring
+runcmd:
+  # Configure UFW firewall
+  - ufw --force enable
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow ssh
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 3000/tcp  # Grafana
+  - ufw allow 9090/tcp  # Prometheus
+  - ufw allow 9093/tcp  # Alertmanager
+  - ufw allow from 10.10.0.0/16 to any port 22
+  
+  # Configure fail2ban
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+  
+  # Install Docker Compose
+  - curl -L "https://github.com/docker/compose/releases/download/v2.23.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  - chmod +x /usr/local/bin/docker-compose
+  - ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+  
+  # Create monitoring directory
+  - mkdir -p /opt/monitoring
+  - chown monitoring:monitoring /opt/monitoring
+  
+  # Create log directory
+  - mkdir -p /var/log/monitoring
+  - chown monitoring:monitoring /var/log/monitoring
+  
+  # Create Prometheus configuration
+  - |
+    mkdir -p /opt/monitoring/prometheus
+    cat > /opt/monitoring/prometheus/prometheus.yml << EOF
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    rule_files:
+      - "rules/*.yml"
+    
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets:
+              - alertmanager:9093
+    
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
+      - job_name: 'reddit-publisher-api'
+        static_configs:
+          - targets: ['10.10.0.2:8000', '10.10.0.3:8000']
+        metrics_path: '/metrics'
+        scrape_interval: 30s
+      
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets: ['10.10.0.2:9100', '10.10.0.3:9100']
+      
+      - job_name: 'redis-exporter'
+        static_configs:
+          - targets: ['redis-exporter:9121']
+      
+      - job_name: 'postgres-exporter'
+        static_configs:
+          - targets: ['postgres-exporter:9187']
+    EOF
+  
+  # Create Grafana provisioning
+  - |
+    mkdir -p /opt/monitoring/grafana/{dashboards,datasources}
+    cat > /opt/monitoring/grafana/datasources/prometheus.yml << EOF
+    apiVersion: 1
+    
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+    EOF
+  
+  # Create Alertmanager configuration
+  - |
+    mkdir -p /opt/monitoring/alertmanager
+    cat > /opt/monitoring/alertmanager/alertmanager.yml << EOF
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alerts@${project_name}.com'
+    
+    route:
+      group_by: ['alertname']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'web.hook'
+    
+    receivers:
+      - name: 'web.hook'
+        slack_configs:
+          - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+            channel: '#alerts'
+            title: '${project_name} Alert'
+            text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+    
+    inhibit_rules:
+      - source_match:
+          severity: 'critical'
+        target_match:
+          severity: 'warning'
+        equal: ['alertname', 'dev', 'instance']
+    EOF
+  
+  # Create monitoring docker-compose
+  - |
+    cat > /opt/monitoring/docker-compose.yml << EOF
+    version: '3.8'
+    
+    services:
+      prometheus:
+        image: prom/prometheus:v2.47.0
+        container_name: prometheus
+        ports:
+          - "9090:9090"
+        volumes:
+          - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+          - ./prometheus/rules:/etc/prometheus/rules:ro
+          - prometheus_data:/prometheus
+        command:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+          - '--storage.tsdb.retention.time=30d'
+          - '--web.enable-lifecycle'
+          - '--web.enable-admin-api'
+        restart: unless-stopped
+      
+      grafana:
+        image: grafana/grafana:10.1.0
+        container_name: grafana
+        ports:
+          - "3000:3000"
+        environment:
+          - GF_SECURITY_ADMIN_PASSWORD=admin
+          - GF_USERS_ALLOW_SIGN_UP=false
+        volumes:
+          - grafana_data:/var/lib/grafana
+          - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+          - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+        restart: unless-stopped
+      
+      alertmanager:
+        image: prom/alertmanager:v0.26.0
+        container_name: alertmanager
+        ports:
+          - "9093:9093"
+        volumes:
+          - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+          - alertmanager_data:/alertmanager
+        command:
+          - '--config.file=/etc/alertmanager/alertmanager.yml'
+          - '--storage.path=/alertmanager'
+        restart: unless-stopped
+      
+      node-exporter:
+        image: prom/node-exporter:v1.6.1
+        container_name: node-exporter
+        ports:
+          - "9100:9100"
+        volumes:
+          - /proc:/host/proc:ro
+          - /sys:/host/sys:ro
+          - /:/rootfs:ro
+        command:
+          - '--path.procfs=/host/proc'
+          - '--path.rootfs=/rootfs'
+          - '--path.sysfs=/host/sys'
+          - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+        restart: unless-stopped
+    
+    volumes:
+      prometheus_data:
+      grafana_data:
+      alertmanager_data:
+    EOF
+  
+  - chown -R monitoring:monitoring /opt/monitoring
+  
+  # Configure Nginx reverse proxy
+  - |
+    cat > /etc/nginx/sites-available/monitoring << EOF
+    server {
+        listen 80;
+        server_name monitoring.${project_name}.com;
+        
+        location /grafana/ {
+            proxy_pass http://localhost:3000/;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+        }
+        
+        location /prometheus/ {
+            proxy_pass http://localhost:9090/;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+        }
+        
+        location /alertmanager/ {
+            proxy_pass http://localhost:9093/;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto \$scheme;
+        }
+        
+        location / {
+            return 301 /grafana/;
+        }
+    }
+    EOF
+  
+  - ln -s /etc/nginx/sites-available/monitoring /etc/nginx/sites-enabled/
+  - rm /etc/nginx/sites-enabled/default
+  - systemctl restart nginx
+  
+  # Start monitoring stack
+  - cd /opt/monitoring && docker-compose up -d
+  
+  # Configure log rotation
+  - |
+    cat > /etc/logrotate.d/monitoring << EOF
+    /var/log/monitoring/*.log {
+        daily
+        missingok
+        rotate 30
+        compress
+        delaycompress
+        notifempty
+        create 644 monitoring monitoring
+    }
+    EOF
+  
+  # Setup monitoring cron jobs
+  - |
+    cat > /tmp/monitoring-cron << EOF
+    # Check monitoring stack health every 5 minutes
+    */5 * * * * cd /opt/monitoring && docker-compose ps | grep -q "Up" || docker-compose up -d
+    
+    # Cleanup old data weekly
+    0 2 * * 0 docker system prune -f
+    EOF
+  
+  - crontab -u monitoring /tmp/monitoring-cron
+  - rm /tmp/monitoring-cron
+  
+  # Install monitoring agent
+  - curl -sSL https://repos.insights.digitalocean.com/install.sh | sudo bash
+  
+  # Final system update
+  - apt-get update && apt-get upgrade -y
+  - apt-get autoremove -y
+  - apt-get autoclean
+
+# Configure timezone
+timezone: UTC
+
+# Configure locale
+locale: en_US.UTF-8
+
+# Reboot after setup
+power_state:
+  delay: "+1"
+  mode: reboot
+  message: "Rebooting after monitoring setup"
+  timeout: 30
+  condition: True

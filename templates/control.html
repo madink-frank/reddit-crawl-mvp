@@ -1,0 +1,323 @@
+{% extends "base.html" %}
+
+{% block title %}제어 패널 - Reddit Ghost Publisher{% endblock %}
+{% block header %}제어 패널{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Reddit 수집 제어 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-download text-primary"></i> Reddit 수집
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="collectForm">
+                    <div class="mb-3">
+                        <label for="subreddits" class="form-label">서브레딧 (쉼표로 구분)</label>
+                        <input type="text" class="form-control" id="subreddits" 
+                               value="programming,technology,webdev" 
+                               placeholder="programming,technology,webdev">
+                    </div>
+                    <div class="mb-3">
+                        <label for="batchSize" class="form-label">배치 크기</label>
+                        <input type="number" class="form-control" id="batchSize" 
+                               value="20" min="1" max="100">
+                    </div>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="forceCollect">
+                            <label class="form-check-label" for="forceCollect">
+                                강제 실행 (중복 체크 무시)
+                            </label>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-play"></i> 수집 시작
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- AI 처리 제어 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-brain text-info"></i> AI 처리
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <p class="text-muted">
+                        처리되지 않은 포스트를 AI로 요약하고 태그를 생성합니다.
+                    </p>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="highScoreOnly" checked>
+                        <label class="form-check-label" for="highScoreOnly">
+                            고점수 포스트만 처리 (100점 이상)
+                        </label>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-info" onclick="triggerAIProcessing()">
+                    <i class="fas fa-play"></i> AI 처리 시작
+                </button>
+                <button type="button" class="btn btn-outline-info" onclick="checkUnprocessed()">
+                    <i class="fas fa-search"></i> 미처리 포스트 확인
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- 전체 파이프라인 제어 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-cogs text-success"></i> 전체 파이프라인
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <p class="text-muted">
+                        수집 → AI 처리 → Ghost 발행의 전체 과정을 실행합니다.
+                    </p>
+                </div>
+                <form id="pipelineForm">
+                    <div class="mb-3">
+                        <label for="pipelineSubreddits" class="form-label">서브레딧</label>
+                        <input type="text" class="form-control" id="pipelineSubreddits" 
+                               value="programming,technology" 
+                               placeholder="programming,technology">
+                    </div>
+                    <div class="mb-3">
+                        <label for="pipelineBatchSize" class="form-label">배치 크기</label>
+                        <input type="number" class="form-control" id="pipelineBatchSize" 
+                               value="5" min="1" max="20">
+                        <div class="form-text">전체 파이프라인은 작은 배치로 실행하는 것을 권장합니다.</div>
+                    </div>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-play"></i> 전체 파이프라인 실행
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 시스템 제어 -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-server text-warning"></i> 시스템 제어
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <p class="text-muted">
+                        시스템 상태 확인 및 기본 제어 기능
+                    </p>
+                </div>
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-outline-primary" onclick="checkSystemStatus()">
+                        <i class="fas fa-heartbeat"></i> 시스템 상태 확인
+                    </button>
+                    <button type="button" class="btn btn-outline-info" onclick="checkQueueStatus()">
+                        <i class="fas fa-list"></i> 큐 상태 확인
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="viewLogs()">
+                        <i class="fas fa-file-alt"></i> 로그 보기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 실행 결과 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-terminal"></i> 실행 결과
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="executionResults" class="bg-dark text-light p-3 rounded" style="min-height: 200px; font-family: monospace; font-size: 0.9rem;">
+                    <div class="text-muted">실행 결과가 여기에 표시됩니다...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// 실행 결과 표시 영역
+const resultsDiv = document.getElementById('executionResults');
+
+function addResult(message, type = 'info') {
+    const timestamp = new Date().toLocaleTimeString();
+    const colorClass = type === 'error' ? 'text-danger' : type === 'success' ? 'text-success' : 'text-info';
+    
+    const resultLine = document.createElement('div');
+    resultLine.innerHTML = `<span class="text-muted">[${timestamp}]</span> <span class="${colorClass}">${message}</span>`;
+    
+    resultsDiv.appendChild(resultLine);
+    resultsDiv.scrollTop = resultsDiv.scrollHeight;
+    
+    // 결과가 너무 많으면 오래된 것 제거
+    if (resultsDiv.children.length > 50) {
+        resultsDiv.removeChild(resultsDiv.firstChild);
+    }
+}
+
+// Reddit 수집 폼
+document.getElementById('collectForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const subreddits = document.getElementById('subreddits').value.split(',').map(s => s.trim());
+    const batchSize = parseInt(document.getElementById('batchSize').value);
+    const force = document.getElementById('forceCollect').checked;
+    
+    addResult(`Reddit 수집 시작: ${subreddits.join(', ')} (배치: ${batchSize})`);
+    
+    fetch('/api/trigger/collect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            subreddits: subreddits,
+            batch_size: batchSize,
+            force: force
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            addResult(`✅ 수집 작업 시작됨: ${data.data.message}`, 'success');
+            addResult(`작업 ID: ${data.data.task_id}`, 'info');
+        } else {
+            addResult(`❌ 수집 실패: ${data.error}`, 'error');
+        }
+    })
+    .catch(error => {
+        addResult(`❌ 네트워크 오류: ${error.message}`, 'error');
+    });
+});
+
+// 전체 파이프라인 폼
+document.getElementById('pipelineForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const subreddits = document.getElementById('pipelineSubreddits').value.split(',').map(s => s.trim());
+    const batchSize = parseInt(document.getElementById('pipelineBatchSize').value);
+    
+    addResult(`전체 파이프라인 시작: ${subreddits.join(', ')} (배치: ${batchSize})`);
+    
+    fetch('/api/trigger/pipeline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            subreddits: subreddits,
+            batch_size: batchSize
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            addResult(`✅ 파이프라인 시작됨: ${data.data.message}`, 'success');
+            addResult(`작업 ID: ${data.data.task_id}`, 'info');
+        } else {
+            addResult(`❌ 파이프라인 실패: ${data.error}`, 'error');
+        }
+    })
+    .catch(error => {
+        addResult(`❌ 네트워크 오류: ${error.message}`, 'error');
+    });
+});
+
+// AI 처리
+function triggerAIProcessing() {
+    addResult('AI 처리 스크립트 실행 중...');
+    
+    fetch('/api/trigger/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            addResult(`✅ AI 처리 시작됨: ${data.message}`, 'success');
+        } else {
+            addResult(`❌ AI 처리 실패: ${data.error}`, 'error');
+        }
+    })
+    .catch(error => {
+        addResult(`❌ 네트워크 오류: ${error.message}`, 'error');
+    });
+}
+
+// 미처리 포스트 확인
+function checkUnprocessed() {
+    addResult('미처리 포스트 확인 중...');
+    
+    fetch('/api/stats')
+    .then(response => response.json())
+    .then(data => {
+        if (data) {
+            const unprocessed = data.total_posts - data.ai_processed;
+            addResult(`📊 미처리 포스트: ${unprocessed}개 (전체: ${data.total_posts}, 처리완료: ${data.ai_processed})`, 'info');
+        }
+    })
+    .catch(error => {
+        addResult(`❌ 통계 조회 실패: ${error.message}`, 'error');
+    });
+}
+
+// 시스템 상태 확인
+function checkSystemStatus() {
+    addResult('시스템 상태 확인 중...');
+    
+    fetch('/api/status')
+    .then(response => response.json())
+    .then(data => {
+        addResult(`🏥 시스템 상태: ${data.status}`, data.status === 'healthy' ? 'success' : 'error');
+        
+        if (data.services) {
+            Object.entries(data.services).forEach(([name, info]) => {
+                const status = info.status === 'healthy' ? '✅' : info.status === 'degraded' ? '⚠️' : '❌';
+                addResult(`  ${status} ${name}: ${info.status} (${info.response_time_ms}ms)`, 
+                         info.status === 'healthy' ? 'success' : 'error');
+            });
+        }
+    })
+    .catch(error => {
+        addResult(`❌ 상태 확인 실패: ${error.message}`, 'error');
+    });
+}
+
+// 큐 상태 확인
+function checkQueueStatus() {
+    addResult('큐 상태 확인 기능은 개발 중입니다...');
+}
+
+// 로그 보기
+function viewLogs() {
+    window.open('/logs', '_blank');
+}
+
+// 초기 메시지
+addResult('제어 패널이 준비되었습니다. 원하는 작업을 선택하세요.', 'success');
+</script>
+{% endblock %}

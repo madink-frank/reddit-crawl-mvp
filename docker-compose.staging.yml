@@ -1,0 +1,249 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for Staging
+  postgres-staging:
+    image: postgres:15-alpine
+    container_name: reddit-publisher-postgres-staging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-reddit_publisher_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_staging}
+      TZ: UTC
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+      - ./backups:/backups
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis for Staging
+  redis-staging:
+    image: redis:7-alpine
+    container_name: reddit-publisher-redis-staging
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    volumes:
+      - redis_staging_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # FastAPI Gateway for Staging
+  api-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-api-staging
+    ports:
+      - "${API_PORT:-8001}:8000"
+    environment:
+      - DEBUG=${DEBUG:-true}
+      - ENVIRONMENT=staging
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_staging}@postgres-staging:5432/${POSTGRES_DB:-reddit_publisher_staging}
+      - REDIS_URL=redis://redis-staging:6379/0
+      - CELERY_BROKER_URL=redis://redis-staging:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-staging:6379/0
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-RedditGhostPublisher/1.0-staging}
+      - REDDIT_DAILY_CALLS_LIMIT=${REDDIT_DAILY_CALLS_LIMIT:-100}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_DAILY_TOKENS_LIMIT=${OPENAI_DAILY_TOKENS_LIMIT:-1000}
+      - GHOST_ADMIN_KEY=${GHOST_ADMIN_KEY}
+      - GHOST_API_URL=${GHOST_API_URL}
+      - DEFAULT_OG_IMAGE_URL=${DEFAULT_OG_IMAGE_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-staging-secret-key}
+      - COLLECT_CRON=${COLLECT_CRON:-*/5 * * * *}
+      - BACKUP_CRON=${BACKUP_CRON:-0 4 * * *}
+      - SUBREDDITS=${SUBREDDITS:-programming,technology}
+      - BATCH_SIZE=${BATCH_SIZE:-5}
+      - QUEUE_ALERT_THRESHOLD=${QUEUE_ALERT_THRESHOLD:-10}
+      - FAILURE_RATE_THRESHOLD=${FAILURE_RATE_THRESHOLD:-0.05}
+      - RETRY_MAX=${RETRY_MAX:-3}
+      - BACKOFF_BASE=${BACKOFF_BASE:-2}
+      - BACKOFF_MIN=${BACKOFF_MIN:-2}
+      - BACKOFF_MAX=${BACKOFF_MAX:-8}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - Collector for Staging
+  worker-collector-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-worker-collector-staging
+    command: celery -A app.celery_app worker -Q collect -c 1 --loglevel=info --hostname=collector-staging@%h
+    environment:
+      - DEBUG=${DEBUG:-true}
+      - ENVIRONMENT=staging
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_staging}@postgres-staging:5432/${POSTGRES_DB:-reddit_publisher_staging}
+      - REDIS_URL=redis://redis-staging:6379/0
+      - CELERY_BROKER_URL=redis://redis-staging:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-staging:6379/0
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-RedditGhostPublisher/1.0-staging}
+      - REDDIT_DAILY_CALLS_LIMIT=${REDDIT_DAILY_CALLS_LIMIT:-100}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - SUBREDDITS=${SUBREDDITS:-programming,technology}
+      - BATCH_SIZE=${BATCH_SIZE:-5}
+      - RETRY_MAX=${RETRY_MAX:-3}
+      - BACKOFF_BASE=${BACKOFF_BASE:-2}
+      - BACKOFF_MIN=${BACKOFF_MIN:-2}
+      - BACKOFF_MAX=${BACKOFF_MAX:-8}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - NLP Pipeline for Staging
+  worker-nlp-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-worker-nlp-staging
+    command: celery -A app.celery_app worker -Q process -c 1 --loglevel=info --hostname=nlp-staging@%h
+    environment:
+      - DEBUG=${DEBUG:-true}
+      - ENVIRONMENT=staging
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_staging}@postgres-staging:5432/${POSTGRES_DB:-reddit_publisher_staging}
+      - REDIS_URL=redis://redis-staging:6379/0
+      - CELERY_BROKER_URL=redis://redis-staging:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-staging:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_DAILY_TOKENS_LIMIT=${OPENAI_DAILY_TOKENS_LIMIT:-1000}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - RETRY_MAX=${RETRY_MAX:-3}
+      - BACKOFF_BASE=${BACKOFF_BASE:-2}
+      - BACKOFF_MIN=${BACKOFF_MIN:-2}
+      - BACKOFF_MAX=${BACKOFF_MAX:-8}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Worker - Publisher for Staging
+  worker-publisher-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-worker-publisher-staging
+    command: celery -A app.celery_app worker -Q publish -c 1 --loglevel=info --hostname=publisher-staging@%h
+    environment:
+      - DEBUG=${DEBUG:-true}
+      - ENVIRONMENT=staging
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_staging}@postgres-staging:5432/${POSTGRES_DB:-reddit_publisher_staging}
+      - REDIS_URL=redis://redis-staging:6379/0
+      - CELERY_BROKER_URL=redis://redis-staging:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-staging:6379/0
+      - GHOST_ADMIN_KEY=${GHOST_ADMIN_KEY}
+      - GHOST_API_URL=${GHOST_API_URL}
+      - DEFAULT_OG_IMAGE_URL=${DEFAULT_OG_IMAGE_URL}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
+      - RETRY_MAX=${RETRY_MAX:-3}
+      - BACKOFF_BASE=${BACKOFF_BASE:-2}
+      - BACKOFF_MIN=${BACKOFF_MIN:-2}
+      - BACKOFF_MAX=${BACKOFF_MAX:-8}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Beat Scheduler for Staging
+  scheduler-staging:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: reddit-publisher-scheduler-staging
+    command: celery -A app.celery_app beat --loglevel=info --schedule=/app/celerybeat/schedule
+    environment:
+      - DEBUG=${DEBUG:-true}
+      - ENVIRONMENT=staging
+      - TZ=UTC
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres_staging}@postgres-staging:5432/${POSTGRES_DB:-reddit_publisher_staging}
+      - REDIS_URL=redis://redis-staging:6379/0
+      - CELERY_BROKER_URL=redis://redis-staging:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis-staging:6379/0
+      - COLLECT_CRON=${COLLECT_CRON:-*/5 * * * *}
+      - BACKUP_CRON=${BACKUP_CRON:-0 4 * * *}
+    volumes:
+      - ./logs:/app/logs
+      - scheduler_staging_data:/app/celerybeat
+    depends_on:
+      postgres-staging:
+        condition: service_healthy
+      redis-staging:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_staging_data:
+  redis_staging_data:
+  scheduler_staging_data:

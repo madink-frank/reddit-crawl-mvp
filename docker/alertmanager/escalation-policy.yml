@@ -1,0 +1,134 @@
+# Escalation Policy Configuration for Reddit Publisher
+# This file documents the escalation policies implemented in alertmanager.yml
+
+escalation_policies:
+  critical_alerts:
+    description: "Critical alerts that require immediate attention"
+    initial_notification:
+      - channel: "#alerts-critical"
+      - delay: 0s
+    escalation_levels:
+      - level: 1
+        delay: 15m
+        actions:
+          - send_to: "#alerts-critical"
+          - mention: "@channel"
+      - level: 2
+        delay: 30m
+        actions:
+          - send_to: "#alerts-critical"
+          - mention: "@here"
+          - send_email: "admin@reddit-publisher.com"
+      - level: 3
+        delay: 1h
+        actions:
+          - send_to: "#alerts-critical"
+          - mention: "@channel"
+          - send_sms: "+1234567890"
+    
+  warning_alerts:
+    description: "Warning alerts that need attention but are not critical"
+    initial_notification:
+      - channel: "#alerts-warning"
+      - delay: 0s
+    escalation_levels:
+      - level: 1
+        delay: 1h
+        actions:
+          - send_to: "#alerts-warning"
+          - mention: "@here"
+      - level: 2
+        delay: 4h
+        actions:
+          - send_to: "#alerts-warning"
+          - send_email: "admin@reddit-publisher.com"
+    
+  service_specific:
+    description: "Service-specific alerts for Reddit Publisher"
+    initial_notification:
+      - channel: "#reddit-publisher-alerts"
+      - delay: 0s
+    escalation_levels:
+      - level: 1
+        delay: 30m
+        actions:
+          - send_to: "#reddit-publisher-alerts"
+          - mention: "@dev-team"
+
+alert_grouping:
+  rules:
+    - group_by: ["alertname", "service"]
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+    - group_by: ["severity"]
+      group_wait: 5s  # Critical alerts grouped faster
+      group_interval: 5s
+      repeat_interval: 30m
+      match:
+        severity: critical
+
+inhibition_rules:
+  - description: "Critical alerts inhibit warning alerts for the same service"
+    source_match:
+      severity: critical
+    target_match:
+      severity: warning
+    equal: ["alertname", "service", "instance"]
+  
+  - description: "Service down alerts inhibit all other alerts for that service"
+    source_match:
+      alertname: ServiceDown
+    target_match_re:
+      alertname: ".*"
+    equal: ["service", "instance"]
+
+notification_templates:
+  slack_critical: |
+    🚨 *CRITICAL ALERT*
+    
+    *Service:* {{ .Labels.service }}
+    *Alert:* {{ .Annotations.summary }}
+    *Description:* {{ .Annotations.description }}
+    *Severity:* {{ .Labels.severity }}
+    *Status:* {{ .Status }}
+    {{ if .Labels.instance }}*Instance:* {{ .Labels.instance }}{{ end }}
+    
+    *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+    
+    <http://grafana:3000/alerting/list|View in Grafana>
+  
+  slack_warning: |
+    ⚠️ *WARNING ALERT*
+    
+    *Service:* {{ .Labels.service }}
+    *Alert:* {{ .Annotations.summary }}
+    *Description:* {{ .Annotations.description }}
+    *Severity:* {{ .Labels.severity }}
+    *Status:* {{ .Status }}
+    {{ if .Labels.instance }}*Instance:* {{ .Labels.instance }}{{ end }}
+    
+    *Time:* {{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}
+    
+    <http://grafana:3000/alerting/list|View in Grafana>
+  
+  slack_resolved: |
+    ✅ *RESOLVED*
+    
+    *Service:* {{ .Labels.service }}
+    *Alert:* {{ .Annotations.summary }}
+    *Severity:* {{ .Labels.severity }}
+    
+    *Resolved at:* {{ .EndsAt.Format "2006-01-02 15:04:05 UTC" }}
+    *Duration:* {{ .EndsAt.Sub .StartsAt }}
+
+maintenance_windows:
+  description: "Scheduled maintenance windows to suppress alerts"
+  examples:
+    - name: "Weekly maintenance"
+      schedule: "0 2 * * 0"  # Every Sunday at 2 AM
+      duration: "2h"
+      suppress_alerts:
+        - "ServiceDown"
+        - "HighMemoryUsage"
+        - "HighDiskUsage"

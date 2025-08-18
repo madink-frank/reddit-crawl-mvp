@@ -1,0 +1,33 @@
+{{!-- List Template for Ghost CMS --}}
+<article class="reddit-list">
+    <header>
+        <h1>{{title}}</h1>
+        <div class="meta">
+            <span class="subreddit">r/{{subreddit}}</span>
+            <span class="score">{{score}} points</span>
+        </div>
+    </header>
+
+    <div class="content">
+        {{#if summary_ko}}
+        <section class="summary">
+            <p>{{summary_ko}}</p>
+        </section>
+        {{/if}}
+
+        {{#if items}}
+        <section class="list-items">
+            <ol>
+                {{#each items}}
+                <li>{{this}}</li>
+                {{/each}}
+            </ol>
+        </section>
+        {{/if}}
+    </div>
+
+    <footer class="copyright">
+        <p>© Reddit User, used under <a href="https://www.redditinc.com/policies/user-agreement" target="_blank">Reddit TOS §5</a></p>
+        <p>Original post: <a href="{{url}}" target="_blank">{{url}}</a></p>
+    </footer>
+</article>

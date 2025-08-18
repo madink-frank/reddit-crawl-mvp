@@ -1,0 +1,37 @@
+{
+	"id": "reddit-ghost-publisher-test-env",
+	"name": "Reddit Ghost Publisher - Test Environment",
+	"values": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"description": "Base URL for the Reddit Ghost Publisher API",
+			"enabled": true
+		},
+		{
+			"key": "test_subreddit",
+			"value": "technology",
+			"description": "Subreddit to use for testing collection",
+			"enabled": true
+		},
+		{
+			"key": "test_batch_size",
+			"value": "5",
+			"description": "Batch size for collection testing",
+			"enabled": true
+		},
+		{
+			"key": "test_reddit_post_id",
+			"value": "smoke_test_post_123",
+			"description": "Test Reddit post ID for processing and publishing tests",
+			"enabled": true
+		},
+		{
+			"key": "api_timeout",
+			"value": "5000",
+			"description": "API timeout in milliseconds",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "environment"
+}
