@@ -23,6 +23,15 @@
     },
     "api/trigger/pipeline.js": {
       "runtime": "@vercel/node"
+    },
+    "api/reddit-collect.js": {
+      "runtime": "@vercel/node"
+    },
+    "api/ai-process.js": {
+      "runtime": "@vercel/node"
+    },
+    "api/ghost-publish.js": {
+      "runtime": "@vercel/node"
     }
   },
   "env": {

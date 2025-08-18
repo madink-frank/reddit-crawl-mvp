@@ -19,7 +19,8 @@
   "author": "Frank Cha",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.0.0"
+    "@supabase/supabase-js": "^2.0.0",
+    "jsonwebtoken": "^9.0.0"
   },
   "devDependencies": {
     "@vercel/node": "^3.0.0",
