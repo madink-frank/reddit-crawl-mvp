@@ -1,0 +1,359 @@
+<!-- Ghost CMS Optimized Dashboard -->
+<style>
+    .dashboard-container { 
+        max-width: 1200px; 
+        margin: 0 auto; 
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .dashboard-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        text-align: center;
+    }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .stat-card {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        text-align: center;
+        transition: transform 0.3s ease;
+        border-left: 4px solid #667eea;
+    }
+    .stat-card:hover { transform: translateY(-5px); }
+    .stat-number { font-size: 2.5rem; font-weight: bold; color: #667eea; margin: 10px 0; }
+    .stat-label { color: #666; font-size: 0.9rem; }
+    .actions-section {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-bottom: 30px;
+    }
+    .action-card {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    .btn-primary {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        margin: 5px;
+    }
+    .btn-primary:hover { background: #5a67d8; transform: translateY(-2px); }
+    .btn-success { background: #48bb78; }
+    .btn-success:hover { background: #38a169; }
+    .status-indicator {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        margin-bottom: 15px;
+    }
+    .status-healthy { background: #c6f6d5; color: #22543d; }
+    .status-error { background: #fed7d7; color: #742a2a; }
+    .log-container {
+        background: #1a202c;
+        color: #4fd1c7;
+        font-family: 'Courier New', monospace;
+        padding: 20px;
+        border-radius: 8px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 0.85rem;
+        line-height: 1.4;
+    }
+    .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #e2e8f0;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 10px 0;
+    }
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea, #764ba2);
+        transition: width 0.3s ease;
+    }
+    @media (max-width: 768px) {
+        .actions-section { grid-template-columns: 1fr; }
+        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+        .dashboard-container { padding: 15px; }
+    }
+</style>
+
+<div class="dashboard-container">
+    <!-- Header -->
+    <div class="dashboard-header">
+        <h1 style="margin: 0; font-size: 2.2rem;">🤖 Reddit Ghost Publisher</h1>
+        <p style="margin: 10px 0 0 0; opacity: 0.9;">Working Dashboard - Real-time API Integration</p>
+        <div style="margin-top: 15px; font-size: 0.9rem;">
+            Connected to: <strong>https://reddit-crawl-mvp.vercel.app</strong>
+            <br>Last updated: <span id="currentTime">-</span>
+        </div>
+    </div>
+
+    <!-- System Status -->
+    <div class="action-card" style="margin-bottom: 30px;">
+        <h3 style="margin-top: 0;">🌐 System Status</h3>
+        <div id="systemStatus" class="status-indicator status-error">
+            System Initializing...
+        </div>
+        <button id="testConnectionBtn" class="btn-primary" onclick="testConnection()">
+            🔍 Test API Connection
+        </button>
+        <button id="loadDataBtn" class="btn-success" onclick="loadDashboardData()">
+            📊 Load Statistics
+        </button>
+    </div>
+
+    <!-- Statistics Dashboard -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number" id="totalPosts">-</div>
+            <div class="stat-label">Total Posts Collected</div>
+            <div class="progress-bar">
+                <div id="postsProgress" class="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="aiProcessed">-</div>
+            <div class="stat-label">AI Enhanced</div>
+            <div class="progress-bar">
+                <div id="aiProgress" class="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="published">-</div>
+            <div class="stat-label">Published to Ghost</div>
+            <div class="progress-bar">
+                <div id="publishProgress" class="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="successRate">-</div>
+            <div class="stat-label">Success Rate</div>
+            <div class="progress-bar">
+                <div id="successProgress" class="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions and Logs -->
+    <div class="actions-section">
+        <div class="action-card">
+            <h3 style="margin-top: 0;">⚡ Quick Actions</h3>
+            <div>
+                <button class="btn-primary" onclick="triggerCollection()">
+                    📥 Start Reddit Collection
+                </button>
+                <button class="btn-primary" onclick="triggerPipeline()">
+                    🔄 Run Full Pipeline
+                </button>
+            </div>
+            <div id="actionResults" style="margin-top: 20px; min-height: 100px;">
+                <p style="color: #666; font-style: italic;">Action results will appear here...</p>
+            </div>
+        </div>
+
+        <div class="action-card">
+            <h3 style="margin-top: 0;">📊 System Logs</h3>
+            <div id="systemLogs" class="log-container">
+                <div>[INFO] Dashboard initialized</div>
+                <div>[INFO] Waiting for API connection test...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="action-card">
+        <h3 style="margin-top: 0;">📈 Recent Activity</h3>
+        <div id="recentActivity">
+            <p style="color: #666; font-style: italic;">Load statistics to see recent activity...</p>
+        </div>
+    </div>
+</div>
+
+<script>
+const API_BASE = 'https://reddit-crawl-mvp.vercel.app';
+
+function updateTime() {
+    document.getElementById('currentTime').textContent = new Date().toLocaleString('ko-KR');
+}
+
+function addLog(message, type = 'INFO') {
+    const logs = document.getElementById('systemLogs');
+    const time = new Date().toLocaleTimeString();
+    logs.innerHTML += `<div>[${type}] ${time}: ${message}</div>`;
+    logs.scrollTop = logs.scrollHeight;
+}
+
+function updateStatus(message, isHealthy = false) {
+    const status = document.getElementById('systemStatus');
+    status.textContent = message;
+    status.className = `status-indicator ${isHealthy ? 'status-healthy' : 'status-error'}`;
+}
+
+async function testConnection() {
+    const btn = document.getElementById('testConnectionBtn');
+    btn.disabled = true;
+    btn.textContent = '🔄 Testing...';
+    
+    updateStatus('Testing API connection...', false);
+    addLog('Starting API connection test...');
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/health`);
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            updateStatus(`✅ API Connected - ${data.data.overall_status}`, true);
+            addLog('API connection successful!', 'SUCCESS');
+        } else {
+            throw new Error(data.error || 'API returned error');
+        }
+    } catch (error) {
+        updateStatus(`❌ Connection Failed: ${error.message}`, false);
+        addLog(`Connection test failed: ${error.message}`, 'ERROR');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = '🔍 Test API Connection';
+}
+
+async function loadDashboardData() {
+    const btn = document.getElementById('loadDataBtn');
+    btn.disabled = true;
+    btn.textContent = '📊 Loading...';
+    
+    addLog('Loading dashboard statistics...');
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/stats`);
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            // Update statistics
+            const stats = data.data;
+            document.getElementById('totalPosts').textContent = stats.total_posts || 0;
+            document.getElementById('aiProcessed').textContent = stats.ai_processed || 0;
+            document.getElementById('published').textContent = stats.published || 0;
+            document.getElementById('successRate').textContent = (stats.success_rate || 0) + '%';
+            
+            // Update progress bars
+            const maxPosts = Math.max(stats.total_posts || 1, 100);
+            document.getElementById('postsProgress').style.width = `${Math.min((stats.total_posts || 0) / maxPosts * 100, 100)}%`;
+            document.getElementById('aiProgress').style.width = `${Math.min((stats.ai_processed || 0) / maxPosts * 100, 100)}%`;
+            document.getElementById('publishProgress').style.width = `${Math.min((stats.published || 0) / maxPosts * 100, 100)}%`;
+            document.getElementById('successProgress').style.width = `${stats.success_rate || 0}%`;
+            
+            // Update recent activity
+            if (stats.recent_posts && stats.recent_posts.length > 0) {
+                let activityHtml = '<h4>Recent Posts:</h4>';
+                stats.recent_posts.forEach(post => {
+                    activityHtml += `
+                        <div style="padding: 10px; margin: 10px 0; background: #f7fafc; border-radius: 6px; border-left: 3px solid #667eea;">
+                            <strong>${post.title}</strong><br>
+                            <small>r/${post.subreddit} | Score: ${post.score} | Comments: ${post.comments} | 
+                            Status: ${post.published ? '✅ Published' : '⏳ Pending'}
+                            ${post.ghost_url ? ` | <a href="${post.ghost_url}" target="_blank">View on Ghost</a>` : ''}
+                            </small>
+                        </div>`;
+                });
+                document.getElementById('recentActivity').innerHTML = activityHtml;
+            }
+            
+            addLog(`Statistics loaded: ${stats.total_posts} posts, ${stats.success_rate}% success rate`, 'SUCCESS');
+        } else {
+            throw new Error(data.error || 'Failed to load statistics');
+        }
+    } catch (error) {
+        addLog(`Statistics loading failed: ${error.message}`, 'ERROR');
+    }
+    
+    btn.disabled = false;
+    btn.textContent = '📊 Load Statistics';
+}
+
+async function triggerCollection() {
+    addLog('Triggering Reddit collection...');
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/trigger/collect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ batch_size: 10, subreddits: ['programming', 'technology', 'webdev'] })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            document.getElementById('actionResults').innerHTML = `
+                <div style="background: #c6f6d5; color: #22543d; padding: 15px; border-radius: 6px;">
+                    <strong>✅ Collection Started!</strong><br>
+                    Task ID: ${data.data.task_id}<br>
+                    Batch Size: ${data.data.batch_size}<br>
+                    Subreddits: ${data.data.subreddits?.join(', ') || 'Default'}
+                </div>`;
+            addLog(`Collection started: ${data.data.task_id}`, 'SUCCESS');
+        } else {
+            throw new Error(data.error || 'Collection failed');
+        }
+    } catch (error) {
+        addLog(`Collection trigger failed: ${error.message}`, 'ERROR');
+    }
+}
+
+async function triggerPipeline() {
+    addLog('Triggering full pipeline...');
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/trigger/pipeline`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+            document.getElementById('actionResults').innerHTML = `
+                <div style="background: #bee3f8; color: #2c5282; padding: 15px; border-radius: 6px;">
+                    <strong>🔄 Pipeline Started!</strong><br>
+                    Task ID: ${data.data.task_id}<br>
+                    Status: ${data.data.status || 'Running'}
+                </div>`;
+            addLog(`Pipeline started: ${data.data.task_id}`, 'SUCCESS');
+        } else {
+            throw new Error(data.error || 'Pipeline failed');
+        }
+    } catch (error) {
+        addLog(`Pipeline trigger failed: ${error.message}`, 'ERROR');
+    }
+}
+
+// Initialize
+updateTime();
+setInterval(updateTime, 1000);
+
+// Auto-test connection on load
+setTimeout(testConnection, 2000);
+
+addLog('Dashboard ready for operation');
+</script>
