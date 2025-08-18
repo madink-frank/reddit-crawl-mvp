@@ -4,9 +4,7 @@
   "description": "Reddit Ghost Publisher API - Serverless Functions",
   "main": "index.js",
   "scripts": {
-    "dev": "vercel dev",
-    "build": "vercel build",
-    "deploy": "vercel --prod"
+    "dev": "vercel dev"
   },
   "keywords": ["reddit", "ghost", "publisher", "api", "serverless"],
   "author": "Frank Cha",
