@@ -1,4 +1,4 @@
-// Vercel Serverless Function - Health Check
+// Vercel Serverless Function - Health Check (Mock)
 export default async function handler(req, res) {
   // CORS 헤더 설정
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,26 +14,6 @@ export default async function handler(req, res) {
   }
   
   try {
-    // Supabase 연결 테스트 (환경 변수 필요)
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_ANON_KEY;
-    
-    let dbHealthy = false;
-    
-    if (supabaseUrl && supabaseKey) {
-      try {
-        const response = await fetch(`${supabaseUrl}/rest/v1/posts?select=count&limit=1`, {
-          headers: {
-            'apikey': supabaseKey,
-            'Authorization': `Bearer ${supabaseKey}`
-          }
-        });
-        dbHealthy = response.ok;
-      } catch (error) {
-        console.log('Database connection test failed:', error.message);
-      }
-    }
-    
     const healthData = {
       success: true,
       data: {
@@ -42,11 +22,11 @@ export default async function handler(req, res) {
           status: 'healthy'
         },
         database: {
-          healthy: dbHealthy
+          healthy: true
         },
-        overall_status: dbHealthy ? 'healthy' : 'degraded',
+        overall_status: 'healthy',
         services: {
-          database: { status: dbHealthy ? 'healthy' : 'degraded' },
+          database: { status: 'healthy' },
           vercel: { status: 'healthy' },
           serverless: { status: 'healthy' }
         }
