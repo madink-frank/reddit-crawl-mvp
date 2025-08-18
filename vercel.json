@@ -1,5 +1,4 @@
 {
-  "version": 2,
   "headers": [
     {
       "source": "/api/(.*)",
@@ -10,31 +9,5 @@
         { "key": "Access-Control-Max-Age", "value": "86400" }
       ]
     }
-  ],
-  "functions": {
-    "api/health.js": {
-      "runtime": "@vercel/node"
-    },
-    "api/stats.js": {
-      "runtime": "@vercel/node"
-    },
-    "api/trigger/collect.js": {
-      "runtime": "@vercel/node"
-    },
-    "api/trigger/pipeline.js": {
-      "runtime": "@vercel/node"
-    },
-    "api/reddit-collect.js": {
-      "runtime": "@vercel/node"
-    },
-    "api/ai-process.js": {
-      "runtime": "@vercel/node"
-    },
-    "api/ghost-publish.js": {
-      "runtime": "@vercel/node"
-    }
-  },
-  "env": {
-    "NODE_ENV": "production"
-  }
+  ]
 }
