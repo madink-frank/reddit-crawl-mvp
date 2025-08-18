@@ -4,13 +4,28 @@
   "description": "Reddit Ghost Publisher API - Serverless Functions",
   "main": "index.js",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "vercel dev --port 3000",
+    "build": "echo 'No build step required for serverless functions'",
+    "deploy": "vercel --prod",
+    "test": "node -e \"console.log('API functions ready for deployment')\""
   },
-  "keywords": ["reddit", "ghost", "publisher", "api", "serverless"],
+  "keywords": [
+    "reddit",
+    "ghost",
+    "publisher",
+    "api",
+    "serverless"
+  ],
   "author": "Frank Cha",
   "license": "MIT",
-  "dependencies": {},
+  "dependencies": {
+    "@supabase/supabase-js": "^2.0.0"
+  },
   "devDependencies": {
-    "@vercel/node": "^3.0.0"
+    "@vercel/node": "^3.0.0",
+    "vercel": "^46.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

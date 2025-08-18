@@ -1,12 +1,31 @@
 {
+  "version": 2,
   "headers": [
     {
       "source": "/api/(.*)",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization" }
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, X-API-Key" },
+        { "key": "Access-Control-Max-Age", "value": "86400" }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/health.js": {
+      "runtime": "@vercel/node"
+    },
+    "api/stats.js": {
+      "runtime": "@vercel/node"
+    },
+    "api/trigger/collect.js": {
+      "runtime": "@vercel/node"
+    },
+    "api/trigger/pipeline.js": {
+      "runtime": "@vercel/node"
+    }
+  },
+  "env": {
+    "NODE_ENV": "production"
+  }
 }
