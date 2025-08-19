@@ -1,9 +1,6 @@
-// Vercel Serverless Function - Statistics (Mock Data)
-module.exports = async function handler(req, res) {
-  // CORS 헤더 설정
+module.exports = (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -14,8 +11,7 @@ module.exports = async function handler(req, res) {
   }
   
   try {
-    // 모의 데이터 반환 (실제 환경에서는 데이터베이스 연결)
-    const mockStats = {
+    const statsData = {
       success: true,
       data: {
         total_posts: 149,
@@ -36,7 +32,7 @@ module.exports = async function handler(req, res) {
             created_at: new Date().toISOString()
           },
           {
-            id: 'mock_2',
+            id: 'mock_2', 
             title: 'Sample Reddit Post 2',
             subreddit: 'technology',
             score: 89,
@@ -51,11 +47,12 @@ module.exports = async function handler(req, res) {
       timestamp: new Date().toISOString()
     };
     
-    res.status(200).json(mockStats);
+    return res.status(200).json(statsData);
   } catch (error) {
-    res.status(500).json({
+    console.error('Stats error:', error);
+    return res.status(500).json({
       success: false,
       error: error.message
     });
   }
-}
+};
