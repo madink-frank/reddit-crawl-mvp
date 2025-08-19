@@ -11,14 +11,22 @@ module.exports = (req, res) => {
   }
   
   try {
+    // Add some randomness to make it feel more dynamic
+    const baseTotal = 149;
+    const randomIncrement = Math.floor(Math.random() * 10);
+    const totalPosts = baseTotal + randomIncrement;
+    const aiProcessed = Math.min(6 + Math.floor(Math.random() * 5), totalPosts);
+    const published = Math.min(4 + Math.floor(Math.random() * 3), aiProcessed);
+    const successRate = totalPosts > 0 ? Math.round((published / totalPosts) * 100) : 0;
+    
     const statsData = {
       success: true,
       data: {
-        total_posts: 149,
-        ai_processed: 6,
-        published: 4,
-        collected_today: 0,
-        success_rate: 2.7,
+        total_posts: totalPosts,
+        ai_processed: aiProcessed,
+        published: published,
+        collected_today: Math.floor(Math.random() * 3),
+        success_rate: successRate,
         recent_posts: [
           {
             id: 'mock_1',
