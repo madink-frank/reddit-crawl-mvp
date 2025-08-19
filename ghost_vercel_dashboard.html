@@ -417,7 +417,7 @@
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 수집 중...';
             button.disabled = true;
             
-            addLog('Vercel에서 Reddit 포스트 수집을 시작합니다...', 'info');
+            addLog('Reddit 포스트 수집을 시작합니다...', 'info');
             
             try {
                 const response = await fetch(`${API_BASE_URL}/api/trigger/collect`, {
@@ -426,7 +426,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        batch_size: 10,
+                        batch_size: 3,
                         subreddits: ['programming', 'technology', 'webdev']
                     })
                 });
@@ -434,25 +434,48 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog('수집 작업이 Serverless Function에서 시작되었습니다.', 'success');
+                    addLog(`수집 완료: ${result.data.collected_count}개 포스트 수집됨`, 'success');
                     addLog(`작업 ID: ${result.data.task_id}`, 'info');
-                    setTimeout(updateStats, 3000);
+                    
+                    // Show collected posts
+                    if (result.data.posts && result.data.posts.length > 0) {
+                        result.data.posts.forEach(post => {
+                            addLog(`✓ ${post.title} (r/${post.subreddit})`, 'success');
+                        });
+                    }
+                    
+                    // Update stats after collection
+                    setTimeout(updateStats, 1000);
                 } else {
                     throw new Error(result.error);
                 }
                 
             } catch (error) {
-                addLog(`수집 트리거 오류: ${error.message}`, 'error');
+                addLog(`수집 오류: ${error.message}`, 'error');
             } finally {
-                button.innerHTML = originalText;
-                button.disabled = false;
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 2000);
             }
         }
         
         // AI 포스트 처리
         async function processPost() {
-            addLog('AI 처리는 별도의 워커가 필요합니다.', 'info');
-            addLog('현재는 Serverless Function으로 트리거만 가능합니다.', 'info');
+            const button = event.target;
+            const originalText = button.innerHTML;
+            
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 처리 중...';
+            button.disabled = true;
+            
+            addLog('AI 처리 작업을 시작합니다...', 'info');
+            addLog('현재는 전체 파이프라인을 통해 AI 처리가 가능합니다.', 'info');
+            addLog('개별 AI 처리 기능은 향후 업데이트 예정입니다.', 'info');
+            
+            setTimeout(() => {
+                button.innerHTML = originalText;
+                button.disabled = false;
+            }, 2000);
         }
         
         // 전체 파이프라인 실행
@@ -463,7 +486,7 @@
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 실행 중...';
             button.disabled = true;
             
-            addLog('Vercel에서 전체 파이프라인을 시작합니다...', 'info');
+            addLog('전체 파이프라인을 시작합니다...', 'info');
             
             try {
                 const response = await fetch(`${API_BASE_URL}/api/trigger/pipeline`, {
@@ -472,26 +495,37 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        batch_size: 3
+                        batch_size: 2
                     })
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog('전체 파이프라인이 Serverless Function에서 시작되었습니다.', 'success');
+                    addLog(`파이프라인 완료!`, 'success');
                     addLog(`작업 ID: ${result.data.task_id}`, 'info');
-                    addLog('수집 → AI 처리 → Ghost 발행 순서로 진행됩니다.', 'info');
-                    setTimeout(updateStats, 5000);
+                    addLog(`결과: 수집 ${result.data.results.collected}개, 처리 ${result.data.results.processed}개, 발행 ${result.data.results.published}개`, 'success');
+                    
+                    // Show published posts
+                    if (result.data.posts && result.data.posts.length > 0) {
+                        result.data.posts.forEach(post => {
+                            addLog(`📝 발행됨: ${post.title}`, 'success');
+                        });
+                    }
+                    
+                    // Update stats after pipeline
+                    setTimeout(updateStats, 1000);
                 } else {
                     throw new Error(result.error);
                 }
                 
             } catch (error) {
-                addLog(`파이프라인 트리거 오류: ${error.message}`, 'error');
+                addLog(`파이프라인 오류: ${error.message}`, 'error');
             } finally {
-                button.innerHTML = originalText;
-                button.disabled = false;
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.disabled = false;
+                }, 3000);
             }
         }
         
@@ -508,13 +542,37 @@
             window.open('https://american-trends.ghost.io', '_blank');
         }
         
+        // 실제 로그 가져오기
+        async function loadRealLogs() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/logs`);
+                const result = await response.json();
+                
+                if (result.success && result.data.logs) {
+                    const logOutput = document.getElementById('logOutput');
+                    logOutput.innerHTML = 'Real-time system logs:<br>';
+                    
+                    result.data.logs.forEach(log => {
+                        const timestamp = new Date(log.timestamp).toLocaleTimeString('ko-KR');
+                        const color = log.type === 'error' ? '#ff6b6b' : log.type === 'success' ? '#51cf66' : '#74c0fc';
+                        logOutput.innerHTML += `<div style="color: ${color}">[${timestamp}] ${log.message}</div>`;
+                    });
+                    
+                    logOutput.scrollTop = logOutput.scrollHeight;
+                }
+            } catch (error) {
+                addLog(`로그 로딩 실패: ${error.message}`, 'error');
+            }
+        }
+        
         // 로그 표시/숨기기
         function showLogs() {
             const logSection = document.getElementById('logSection');
             logSection.style.display = logSection.style.display === 'none' ? 'block' : 'none';
             
             if (logSection.style.display === 'block') {
-                addLog('Vercel Serverless 로그를 표시합니다...', 'info');
+                addLog('실시간 시스템 로그를 로딩합니다...', 'info');
+                loadRealLogs();
             }
         }
         
