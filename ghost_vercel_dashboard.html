@@ -325,20 +325,63 @@
             try {
                 addLog('Vercel API 서버 상태를 확인합니다...', 'info');
                 
-                const response = await fetch(`${API_BASE_URL}/api/health`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10초 타임아웃
+                
+                const response = await fetch(`${API_BASE_URL}/api/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.success) {
                     displaySystemStatus(result.data);
-                    addLog('Vercel API에서 시스템 상태를 가져왔습니다.', 'success');
+                    addLog('✅ Vercel API 연결 성공!', 'success');
+                    document.getElementById('apiStatus').className = 'badge bg-success';
+                    document.getElementById('apiStatus').textContent = 'connected';
                 } else {
-                    throw new Error(result.error);
+                    throw new Error(result.error || 'Unknown API error');
                 }
                 
             } catch (error) {
+                let errorMessage = '';
+                let alertClass = 'warning';
+                
+                if (error.name === 'AbortError') {
+                    errorMessage = 'API 요청 시간 초과 (10초)';
+                    alertClass = 'danger';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Vercel API 서버에 연결할 수 없습니다. 네트워크를 확인해주세요.';
+                    alertClass = 'danger';
+                } else {
+                    errorMessage = `API 오류: ${error.message}`;
+                }
+                
                 document.getElementById('systemStatus').innerHTML = 
-                    '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> Vercel API 서버 연결 확인 중... 배포가 완료되면 정상 작동합니다.</div>';
-                addLog(`상태 확인 오류: ${error.message}`, 'error');
+                    `<div class="alert alert-${alertClass}">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        <strong>연결 문제:</strong> ${errorMessage}
+                        <br><small class="mt-2 d-block">
+                            <button class="btn btn-sm btn-outline-primary" onclick="checkSystemStatus()">
+                                <i class="fas fa-redo"></i> 다시 시도
+                            </button>
+                        </small>
+                    </div>`;
+                    
+                document.getElementById('apiStatus').className = 'badge bg-danger';
+                document.getElementById('apiStatus').textContent = 'disconnected';
+                addLog(`❌ ${errorMessage}`, 'error');
             }
         }
         
@@ -380,32 +423,77 @@
         // 통계 업데이트
         async function updateStats() {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/stats`);
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 8000); // 8초 타임아웃
+                
+                const response = await fetch(`${API_BASE_URL}/api/stats`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const result = await response.json();
                 
                 if (result.success) {
                     const stats = result.data;
                     
-                    document.getElementById('totalPosts').textContent = stats.total_posts;
-                    document.getElementById('aiProcessed').textContent = stats.ai_processed;
-                    document.getElementById('published').textContent = stats.published;
+                    // 애니메이션 효과와 함께 업데이트
+                    updateStatWithAnimation('totalPosts', stats.total_posts);
+                    updateStatWithAnimation('aiProcessed', stats.ai_processed);
+                    updateStatWithAnimation('published', stats.published);
+                    updateStatWithAnimation('successRate', stats.success_rate + '%');
+                    
                     document.getElementById('pendingProcessing').textContent = `대기: ${stats.total_posts - stats.ai_processed}개`;
                     document.getElementById('pendingPublishing').textContent = `대기: ${stats.ai_processed - stats.published}개`;
                     
-                    document.getElementById('successRate').textContent = stats.success_rate + '%';
-                    
-                    document.getElementById('todayCollected').textContent = stats.collected_today;
-                    document.getElementById('todayProcessed').textContent = stats.ai_processed;
-                    document.getElementById('todayPublished').textContent = stats.published;
+                    document.getElementById('todayCollected').textContent = stats.collected_today || 0;
+                    document.getElementById('todayProcessed').textContent = stats.processed_today || stats.ai_processed;
+                    document.getElementById('todayPublished').textContent = stats.published_today || stats.published;
                     
                     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('ko-KR');
                     
-                    addLog('통계 데이터가 업데이트되었습니다.', 'success');
+                    addLog('📊 통계 데이터 업데이트 완료', 'success');
                 } else {
-                    throw new Error(result.error);
+                    throw new Error(result.error || 'Stats API returned error');
                 }
             } catch (error) {
-                addLog(`통계 업데이트 실패: ${error.message}`, 'error');
+                if (error.name === 'AbortError') {
+                    addLog('⏱️ 통계 요청 시간 초과', 'error');
+                } else {
+                    addLog(`❌ 통계 업데이트 실패: ${error.message}`, 'error');
+                }
+                
+                // 에러 시 기본값 표시
+                ['totalPosts', 'aiProcessed', 'published', 'successRate'].forEach(id => {
+                    if (document.getElementById(id).textContent === '-') {
+                        document.getElementById(id).textContent = '?';
+                    }
+                });
+            }
+        }
+        
+        // 통계 애니메이션 업데이트
+        function updateStatWithAnimation(elementId, newValue) {
+            const element = document.getElementById(elementId);
+            const currentValue = element.textContent;
+            
+            if (currentValue !== newValue.toString()) {
+                element.style.transform = 'scale(1.1)';
+                element.style.transition = 'transform 0.2s';
+                
+                setTimeout(() => {
+                    element.textContent = newValue;
+                    element.style.transform = 'scale(1)';
+                }, 100);
             }
         }
         
@@ -417,46 +505,78 @@
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 수집 중...';
             button.disabled = true;
             
-            addLog('Reddit 포스트 수집을 시작합니다...', 'info');
+            addLog('🚀 Reddit 포스트 수집을 시작합니다...', 'info');
             
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15초 타임아웃
+                
                 const response = await fetch(`${API_BASE_URL}/api/trigger/collect`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: JSON.stringify({
                         batch_size: 3,
                         subreddits: ['programming', 'technology', 'webdev']
-                    })
+                    }),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog(`수집 완료: ${result.data.collected_count}개 포스트 수집됨`, 'success');
-                    addLog(`작업 ID: ${result.data.task_id}`, 'info');
+                    addLog(`✅ 수집 완료: ${result.data.collected_count}개 포스트 수집됨`, 'success');
+                    addLog(`📋 작업 ID: ${result.data.task_id}`, 'info');
                     
-                    // Show collected posts
+                    // Show collected posts with better formatting
                     if (result.data.posts && result.data.posts.length > 0) {
-                        result.data.posts.forEach(post => {
-                            addLog(`✓ ${post.title} (r/${post.subreddit})`, 'success');
+                        addLog('📝 수집된 포스트:', 'info');
+                        result.data.posts.forEach((post, index) => {
+                            addLog(`  ${index + 1}. ${post.title} (r/${post.subreddit}) - ${post.score} points`, 'success');
                         });
                     }
                     
                     // Update stats after collection
                     setTimeout(updateStats, 1000);
+                    
+                    // Success animation
+                    button.innerHTML = '<i class="fas fa-check"></i> 완료!';
+                    button.className = 'btn btn-success';
+                    
                 } else {
-                    throw new Error(result.error);
+                    throw new Error(result.error || 'Collection API returned error');
                 }
                 
             } catch (error) {
-                addLog(`수집 오류: ${error.message}`, 'error');
+                let errorMessage = '';
+                if (error.name === 'AbortError') {
+                    errorMessage = '수집 요청 시간 초과 (15초)';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'API 서버에 연결할 수 없습니다';
+                } else {
+                    errorMessage = error.message;
+                }
+                
+                addLog(`❌ 수집 실패: ${errorMessage}`, 'error');
+                
+                // Error animation
+                button.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 실패';
+                button.className = 'btn btn-danger';
+                
             } finally {
                 setTimeout(() => {
                     button.innerHTML = originalText;
+                    button.className = 'btn btn-primary';
                     button.disabled = false;
-                }, 2000);
+                }, 3000);
             }
         }
         
@@ -486,54 +606,139 @@
             button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 실행 중...';
             button.disabled = true;
             
-            addLog('전체 파이프라인을 시작합니다...', 'info');
+            addLog('🔄 전체 파이프라인을 시작합니다...', 'info');
             
             try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 20000); // 20초 타임아웃
+                
                 const response = await fetch(`${API_BASE_URL}/api/trigger/pipeline`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest'
                     },
                     body: JSON.stringify({
                         batch_size: 2
-                    })
+                    }),
+                    signal: controller.signal
                 });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    addLog(`파이프라인 완료!`, 'success');
-                    addLog(`작업 ID: ${result.data.task_id}`, 'info');
-                    addLog(`결과: 수집 ${result.data.results.collected}개, 처리 ${result.data.results.processed}개, 발행 ${result.data.results.published}개`, 'success');
+                    addLog(`🎉 파이프라인 완료!`, 'success');
+                    addLog(`📋 작업 ID: ${result.data.task_id}`, 'info');
                     
-                    // Show published posts
+                    const { collected, processed, published } = result.data.results;
+                    addLog(`📊 결과: 수집 ${collected}개 → 처리 ${processed}개 → 발행 ${published}개`, 'success');
+                    
+                    // Show published posts with better formatting
                     if (result.data.posts && result.data.posts.length > 0) {
-                        result.data.posts.forEach(post => {
-                            addLog(`📝 발행됨: ${post.title}`, 'success');
+                        addLog('📰 발행된 포스트:', 'info');
+                        result.data.posts.forEach((post, index) => {
+                            addLog(`  ${index + 1}. ${post.title} (r/${post.subreddit})`, 'success');
+                            addLog(`     🔗 ${post.ghost_url}`, 'info');
                         });
                     }
                     
                     // Update stats after pipeline
                     setTimeout(updateStats, 1000);
+                    
+                    // Success animation
+                    button.innerHTML = '<i class="fas fa-check-circle"></i> 완료!';
+                    button.className = 'btn btn-success';
+                    
                 } else {
-                    throw new Error(result.error);
+                    throw new Error(result.error || 'Pipeline API returned error');
                 }
                 
             } catch (error) {
-                addLog(`파이프라인 오류: ${error.message}`, 'error');
+                let errorMessage = '';
+                if (error.name === 'AbortError') {
+                    errorMessage = '파이프라인 요청 시간 초과 (20초)';
+                } else if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'API 서버에 연결할 수 없습니다';
+                } else {
+                    errorMessage = error.message;
+                }
+                
+                addLog(`❌ 파이프라인 실패: ${errorMessage}`, 'error');
+                
+                // Error animation
+                button.innerHTML = '<i class="fas fa-times-circle"></i> 실패';
+                button.className = 'btn btn-danger';
+                
             } finally {
                 setTimeout(() => {
                     button.innerHTML = originalText;
+                    button.className = 'btn btn-success';
                     button.disabled = false;
-                }, 3000);
+                }, 4000);
             }
         }
         
         // 데이터 새로고침
-        function refreshData() {
-            addLog('데이터를 새로고침합니다...', 'info');
-            checkSystemStatus();
-            updateStats();
+        async function refreshData() {
+            const button = event.target;
+            const originalText = button.innerHTML;
+            
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 새로고침 중...';
+            button.disabled = true;
+            
+            addLog('🔄 데이터를 새로고침합니다...', 'info');
+            
+            try {
+                // 순차적으로 실행하여 안정성 확보
+                await checkSystemStatus();
+                await new Promise(resolve => setTimeout(resolve, 500)); // 0.5초 대기
+                await updateStats();
+                
+                addLog('✅ 데이터 새로고침 완료', 'success');
+                
+                // Success feedback
+                button.innerHTML = '<i class="fas fa-check"></i> 완료';
+                button.className = 'btn btn-outline-success';
+                
+            } catch (error) {
+                addLog(`❌ 새로고침 실패: ${error.message}`, 'error');
+                button.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 실패';
+                button.className = 'btn btn-outline-danger';
+            } finally {
+                setTimeout(() => {
+                    button.innerHTML = originalText;
+                    button.className = 'btn btn-outline-primary';
+                    button.disabled = false;
+                }, 2000);
+            }
+        }
+        
+        // 연결 상태 모니터링
+        function startConnectionMonitoring() {
+            setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/health`, {
+                        method: 'GET',
+                        signal: AbortSignal.timeout(5000) // 5초 타임아웃
+                    });
+                    
+                    if (response.ok) {
+                        document.getElementById('apiStatus').className = 'badge bg-success';
+                        document.getElementById('apiStatus').textContent = 'connected';
+                    } else {
+                        throw new Error('API not responding');
+                    }
+                } catch (error) {
+                    document.getElementById('apiStatus').className = 'badge bg-danger';
+                    document.getElementById('apiStatus').textContent = 'disconnected';
+                }
+            }, 60000); // 1분마다 체크
         }
         
         // Ghost 블로그 보기
@@ -590,13 +795,24 @@
         // 초기화
         function init() {
             updateTime();
-            checkSystemStatus();
-            updateStats();
-            addLog('Reddit Ghost Publisher Vercel Dashboard가 시작되었습니다.', 'success');
-            addLog('Serverless Functions로 실행 중입니다.', 'info');
+            
+            // 초기 로딩 메시지
+            addLog('🚀 Reddit Ghost Publisher Vercel Dashboard 시작', 'success');
+            addLog('☁️ Serverless Functions 연결 중...', 'info');
             
             // API URL 표시
             document.getElementById('apiUrl').textContent = API_BASE_URL;
+            
+            // 초기 데이터 로드
+            setTimeout(async () => {
+                await checkSystemStatus();
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                await updateStats();
+                addLog('✅ 초기화 완료', 'success');
+            }, 1000);
+            
+            // 연결 상태 모니터링 시작
+            startConnectionMonitoring();
             
             // 자동 업데이트 (30초마다)
             setInterval(() => {
@@ -606,6 +822,14 @@
             
             // 시간 업데이트 (1초마다)
             setInterval(updateTime, 1000);
+            
+            // 페이지 가시성 변경 시 데이터 새로고침
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    addLog('👀 페이지 활성화 - 데이터 새로고침', 'info');
+                    updateStats();
+                }
+            });
         }
         
         // 페이지 로드 시 초기화
