@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reddit Ghost Publisher - Enhanced Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            --warning-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --info-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background: var(--primary-gradient) !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--primary-gradient);
+        }
+        
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 700;
+            margin: 1rem 0;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .action-btn {
+            border-radius: 25px;
+            padding: 12px 30px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s ease;
+            border: none;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .action-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+        
+        .action-btn:hover::before {
+            left: 100%;
+        }
+        
+        .btn-collect {
+            background: var(--success-gradient);
+            color: white;
+        }
+        
+        .btn-process {
+            background: var(--info-gradient);
+            color: white;
+        }
+        
+        .btn-pipeline {
+            background: var(--warning-gradient);
+            color: white;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-healthy {
+            background-color: #28a745;
+        }
+        
+        .status-warning {
+            background-color: #ffc107;
+        }
+        
+        .status-error {
+            background-color: #dc3545;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .log-container {
+            background: #1a1a1a;
+            border-radius: 15px;
+            padding: 1.5rem;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        
+        .log-info { color: #17a2b8; }
+        .log-success { color: #28a745; }
+        .log-error { color: #dc3545; }
+        .log-warning { color: #ffc107; }
+        
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .progress-bar-animated {
+            background: var(--primary-gradient);
+        }
+    </style>
+</head>
+<body>
+    <!-- Connection Status Indicator -->
+    <div id="connectionStatus" class="connection-status bg-success">
+        <span class="status-indicator status-healthy"></span>
+        Connected to API
+    </div>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <span class="navbar-brand">
+                <i class="fas fa-robot me-2"></i>
+                Reddit Ghost Publisher
+                <small class="ms-2 opacity-75">Enhanced Dashboard</small>
+            </span>
+            <div class="navbar-nav ms-auto">
+                <span class="navbar-text">
+                    <i class="fas fa-clock me-1"></i>
+                    <span id="currentTime"></span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Welcome Banner -->
+        <div class="card mb-4 fade-in">
+            <div class="card-body text-center" style="background: var(--primary-gradient); color: white; border-radius: 15px;">
+                <h2><i class="fas fa-cloud me-2"></i>클라우드 배포 완료!</h2>
+                <p class="mb-0">Vercel Serverless Functions로 24/7 운영 중입니다.</p>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="stat-card fade-in">
+                    <i class="fas fa-database fa-2x text-primary mb-3"></i>
+                    <div class="stat-number" id="totalPosts">-</div>
+                    <h6 class="text-muted">총 수집된 포스트</h6>
+                    <small class="text-success" id="postsChange">+0</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="stat-card fade-in">
+                    <i class="fas fa-robot fa-2x text-info mb-3"></i>
+                    <div class="stat-number" id="aiProcessed">-</div>
+                    <h6 class="text-muted">AI 처리 완료</h6>
+                    <small class="text-muted" id="pendingProcessing">대기: -개</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="stat-card fade-in">
+                    <i class="fas fa-blog fa-2x text-success mb-3"></i>
+                    <div class="stat-number" id="published">-</div>
+                    <h6 class="text-muted">Ghost 발행 완료</h6>
+                    <small class="text-muted" id="pendingPublishing">대기: -개</small>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="stat-card fade-in">
+                    <i class="fas fa-chart-line fa-2x text-warning mb-3"></i>
+                    <div class="stat-number" id="successRate">-</div>
+                    <h6 class="text-muted">성공률</h6>
+                    <div class="progress mt-2" style="height: 8px;">
+                        <div class="progress-bar progress-bar-animated" id="successProgress" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card h-100 fade-in">
+                    <div class="card-body text-center">
+                        <i class="fas fa-download fa-3x text-success mb-3"></i>
+                        <h5>Reddit 수집</h5>
+                        <p class="text-muted">새로운 포스트를 수집합니다</p>
+                        <button class="action-btn btn-collect" onclick="triggerCollection()">
+                            <i class="fas fa-play me-2"></i>수집 시작
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100 fade-in">
+                    <div class="card-body text-center">
+                        <i class="fas fa-brain fa-3x text-info mb-3"></i>
+                        <h5>AI 처리</h5>
+                        <p class="text-muted">포스트를 AI로 요약합니다</p>
+                        <button class="action-btn btn-process" onclick="processPost()">
+                            <i class="fas fa-robot me-2"></i>AI 처리
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100 fade-in">
+                    <div class="card-body text-center">
+                        <i class="fas fa-rocket fa-3x text-warning mb-3"></i>
+                        <h5>전체 파이프라인</h5>
+                        <p class="text-muted">수집 → AI → 발행</p>
+                        <button class="action-btn btn-pipeline" onclick="runFullPipeline()">
+                            <i class="fas fa-play me-2"></i>전체 실행
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <h5><i class="fas fa-tools me-2"></i>빠른 액션</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-outline-primary" onclick="refreshData()">
+                                <i class="fas fa-sync me-2"></i>데이터 새로고침
+                            </button>
+                            <button class="btn btn-outline-success" onclick="viewGhostBlog()">
+                                <i class="fas fa-external-link-alt me-2"></i>Ghost 블로그 보기
+                            </button>
+                            <button class="btn btn-outline-warning" onclick="toggleLogs()">
+                                <i class="fas fa-terminal me-2"></i>시스템 로그
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card fade-in">
+                    <div class="card-header">
+                        <h5><i class="fas fa-chart-bar me-2"></i>오늘 활동</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <h4 class="text-primary" id="todayCollected">0</h4>
+                                <small class="text-muted">수집</small>
+                            </div>
+                            <div class="col-4">
+                                <h4 class="text-info" id="todayProcessed">0</h4>
+                                <small class="text-muted">처리</small>
+                            </div>
+                            <div class="col-4">
+                                <h4 class="text-success" id="todayPublished">0</h4>
+                                <small class="text-muted">발행</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Logs -->
+        <div class="card mb-4 fade-in" id="logSection" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-terminal me-2"></i>시스템 로그</h5>
+                <button class="btn btn-sm btn-outline-light" onclick="clearLogs()">
+                    <i class="fas fa-trash me-1"></i>지우기
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="log-container" id="logOutput">
+                    <div class="log-entry log-info">시스템 로그가 여기에 표시됩니다...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Configuration
+        const API_BASE_URL = 'https://reddit-crawl-mvp.vercel.app';
+        let previousStats = {};
+        let isConnected = false;
+        
+        // Utility Functions
+        function updateTime() {
+            document.getElementById('currentTime').textContent = new Date().toLocaleString('ko-KR');
+        }
+        
+        function addLog(message, type = 'info') {
+            const logOutput = document.getElementById('logOutput');
+            const timestamp = new Date().toLocaleTimeString('ko-KR');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.innerHTML = `[${timestamp}] ${message}`;
+            
+            logOutput.appendChild(logEntry);
+            logOutput.scrollTop = logOutput.scrollHeight;
+            
+            // Keep only last 50 logs
+            const logs = logOutput.querySelectorAll('.log-entry');
+            if (logs.length > 50) {
+                logs[0].remove();
+            }
+        }
+        
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            const indicator = statusEl.querySelector('.status-indicator');
+            
+            if (connected !== isConnected) {
+                isConnected = connected;
+                if (connected) {
+                    statusEl.className = 'connection-status bg-success';
+                    statusEl.innerHTML = '<span class="status-indicator status-healthy"></span>Connected to API';
+                    addLog('✅ API 연결 성공', 'success');
+                } else {
+                    statusEl.className = 'connection-status bg-danger';
+                    statusEl.innerHTML = '<span class="status-indicator status-error"></span>API 연결 실패';
+                    addLog('❌ API 연결 실패', 'error');
+                }
+            }
+        }
+        
+        function animateNumber(elementId, newValue) {
+            const element = document.getElementById(elementId);
+            const currentValue = parseInt(element.textContent) || 0;
+            
+            if (currentValue !== newValue) {
+                element.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    element.textContent = newValue;
+                    element.style.transform = 'scale(1)';
+                    
+                    // Show change indicator
+                    const changeEl = document.getElementById(elementId.replace(/[A-Z]/g, '') + 'Change');
+                    if (changeEl && newValue > currentValue) {
+                        changeEl.textContent = `+${newValue - currentValue}`;
+                        changeEl.style.opacity = '1';
+                        setTimeout(() => changeEl.style.opacity = '0.5', 2000);
+                    }
+                }, 150);
+            }
+        }
+        
+        // API Functions
+        async function makeAPIRequest(endpoint, options = {}) {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                    ...options,
+                    signal: controller.signal,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        ...options.headers
+                    }
+                });
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const result = await response.json();
+                updateConnectionStatus(true);
+                return result;
+                
+            } catch (error) {
+                clearTimeout(timeoutId);
+                updateConnectionStatus(false);
+                throw error;
+            }
+        }
+        
+        async function updateStats() {
+            try {
+                const result = await makeAPIRequest('/api/stats');
+                
+                if (result.success) {
+                    const stats = result.data;
+                    
+                    // Animate number changes
+                    animateNumber('totalPosts', stats.total_posts);
+                    animateNumber('aiProcessed', stats.ai_processed);
+                    animateNumber('published', stats.published);
+                    
+                    // Update other elements
+                    document.getElementById('successRate').textContent = stats.success_rate + '%';
+                    document.getElementById('successProgress').style.width = stats.success_rate + '%';
+                    document.getElementById('pendingProcessing').textContent = `대기: ${stats.total_posts - stats.ai_processed}개`;
+                    document.getElementById('pendingPublishing').textContent = `대기: ${stats.ai_processed - stats.published}개`;
+                    
+                    // Today's activity
+                    document.getElementById('todayCollected').textContent = stats.collected_today || 0;
+                    document.getElementById('todayProcessed').textContent = stats.processed_today || stats.ai_processed;
+                    document.getElementById('todayPublished').textContent = stats.published_today || stats.published;
+                    
+                    addLog('📊 통계 업데이트 완료', 'success');
+                    previousStats = stats;
+                } else {
+                    throw new Error(result.error || 'Stats API error');
+                }
+            } catch (error) {
+                addLog(`❌ 통계 업데이트 실패: ${error.message}`, 'error');
+            }
+        }
+        
+        async function triggerCollection() {
+            const button = event.target;
+            const originalHTML = button.innerHTML;
+            
+            button.innerHTML = '<span class="loading-spinner me-2"></span>수집 중...';
+            button.disabled = true;
+            
+            addLog('🚀 Reddit 포스트 수집 시작', 'info');
+            
+            try {
+                const result = await makeAPIRequest('/api/trigger/collect', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        batch_size: 3,
+                        subreddits: ['programming', 'technology', 'webdev']
+                    })
+                });
+                
+                if (result.success) {
+                    addLog(`✅ 수집 완료: ${result.data.collected_count}개 포스트`, 'success');
+                    
+                    if (result.data.posts) {
+                        result.data.posts.forEach((post, i) => {
+                            addLog(`  ${i+1}. ${post.title} (r/${post.subreddit})`, 'info');
+                        });
+                    }
+                    
+                    button.innerHTML = '<i class="fas fa-check me-2"></i>완료!';
+                    button.className = 'action-btn btn-success';
+                    
+                    setTimeout(updateStats, 1000);
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                addLog(`❌ 수집 실패: ${error.message}`, 'error');
+                button.innerHTML = '<i class="fas fa-times me-2"></i>실패';
+                button.className = 'action-btn btn-danger';
+            } finally {
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.className = 'action-btn btn-collect';
+                    button.disabled = false;
+                }, 3000);
+            }
+        }
+        
+        async function processPost() {
+            addLog('ℹ️ AI 처리는 전체 파이프라인을 통해 가능합니다', 'info');
+        }
+        
+        async function runFullPipeline() {
+            const button = event.target;
+            const originalHTML = button.innerHTML;
+            
+            button.innerHTML = '<span class="loading-spinner me-2"></span>실행 중...';
+            button.disabled = true;
+            
+            addLog('🔄 전체 파이프라인 시작', 'info');
+            
+            try {
+                const result = await makeAPIRequest('/api/trigger/pipeline', {
+                    method: 'POST',
+                    body: JSON.stringify({ batch_size: 2 })
+                });
+                
+                if (result.success) {
+                    const { collected, processed, published } = result.data.results;
+                    addLog(`🎉 파이프라인 완료: ${collected}개 수집 → ${processed}개 처리 → ${published}개 발행`, 'success');
+                    
+                    if (result.data.posts) {
+                        result.data.posts.forEach((post, i) => {
+                            addLog(`  📝 ${i+1}. ${post.title}`, 'success');
+                        });
+                    }
+                    
+                    button.innerHTML = '<i class="fas fa-check-circle me-2"></i>완료!';
+                    button.className = 'action-btn btn-success';
+                    
+                    setTimeout(updateStats, 1000);
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                addLog(`❌ 파이프라인 실패: ${error.message}`, 'error');
+                button.innerHTML = '<i class="fas fa-times-circle me-2"></i>실패';
+                button.className = 'action-btn btn-danger';
+            } finally {
+                setTimeout(() => {
+                    button.innerHTML = originalHTML;
+                    button.className = 'action-btn btn-pipeline';
+                    button.disabled = false;
+                }, 4000);
+            }
+        }
+        
+        async function refreshData() {
+            addLog('🔄 데이터 새로고침 중...', 'info');
+            await updateStats();
+        }
+        
+        function viewGhostBlog() {
+            window.open('https://american-trends.ghost.io', '_blank');
+            addLog('🔗 Ghost 블로그 열기', 'info');
+        }
+        
+        function toggleLogs() {
+            const logSection = document.getElementById('logSection');
+            logSection.style.display = logSection.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        function clearLogs() {
+            document.getElementById('logOutput').innerHTML = '<div class="log-entry log-info">로그가 지워졌습니다.</div>';
+        }
+        
+        // Initialize
+        function init() {
+            addLog('🚀 Enhanced Dashboard 시작', 'success');
+            addLog('☁️ Vercel API 연결 중...', 'info');
+            
+            updateTime();
+            updateStats();
+            
+            // Auto-update every 30 seconds
+            setInterval(updateStats, 30000);
+            setInterval(updateTime, 1000);
+            
+            // Connection monitoring
+            setInterval(async () => {
+                try {
+                    await makeAPIRequest('/api/health');
+                } catch (error) {
+                    // Connection status already updated in makeAPIRequest
+                }
+            }, 60000);
+        }
+        
+        // Start when page loads
+        document.addEventListener('DOMContentLoaded', init);
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                addLog('👀 페이지 활성화 - 데이터 새로고침', 'info');
+                updateStats();
+            }
+        });
+    </script>
+</body>
+</html>
