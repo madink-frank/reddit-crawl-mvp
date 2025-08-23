@@ -1,0 +1,42 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT",
+    "healthcheckPath": "/health",
+    "healthcheckTimeout": 100,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "ENVIRONMENT": "production",
+        "DEBUG": "false",
+        "TZ": "UTC",
+        "API_HOST": "0.0.0.0",
+        "API_PORT": "$PORT",
+        "REDDIT_RATE_LIMIT_RPM": "60",
+        "REDDIT_DAILY_CALLS_LIMIT": "5000",
+        "OPENAI_PRIMARY_MODEL": "gpt-4o-mini",
+        "OPENAI_FALLBACK_MODEL": "gpt-4o",
+        "OPENAI_DAILY_TOKENS_LIMIT": "100000",
+        "COST_GPT4O_MINI_PER_1K": "0.00015",
+        "COST_GPT4O_PER_1K": "0.005",
+        "COLLECT_CRON": "0 * * * *",
+        "BACKUP_CRON": "0 4 * * *",
+        "SUBREDDITS": "programming,technology,webdev",
+        "BATCH_SIZE": "20",
+        "QUEUE_ALERT_THRESHOLD": "500",
+        "FAILURE_RATE_THRESHOLD": "0.05",
+        "RETRY_MAX": "3",
+        "BACKOFF_BASE": "2",
+        "BACKOFF_MIN": "2",
+        "BACKOFF_MAX": "8"
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@
     <title>Reddit Ghost Publisher - 어드민 대시보드</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="/js/network-utils.js"></script>
     <style>
         .card-stat { 
             transition: transform 0.2s; 
@@ -275,7 +276,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // 설정 - Ghost 환경에서는 외부 API 서버에 연결
-        const API_BASE_URL = 'http://localhost:5003';  // 어드민 API 서버
+        const API_BASE_URL = 'https://reddit-crawl-mvp.vercel.app';  // Vercel API 서버
         const USE_MOCK_DATA = false;  // 실제 API 서버 사용
         
         // 현재 시간 업데이트
@@ -293,26 +294,38 @@
             logOutput.scrollTop = logOutput.scrollHeight;
         }
         
-        // 시스템 상태 확인
+        // 시스템 상태 확인 (Enhanced with network utilities)
         async function checkSystemStatus() {
             try {
                 addLog('시스템 상태를 확인합니다...', 'info');
                 
-                // 실제 API 호출
-                const response = await fetch(`${API_BASE_URL}/api/health`);
-                const result = await response.json();
+                // Enhanced API call with retry logic
+                const connectionStatus = await networkUtils.getConnectionStatus(API_BASE_URL);
                 
-                if (result.success) {
-                    displaySystemStatus(result.data);
-                    addLog('실제 API에서 시스템 상태를 가져왔습니다.', 'success');
+                if (connectionStatus.connected) {
+                    const result = await networkUtils.get(`${API_BASE_URL}/api/health`);
+                    
+                    if (result.success) {
+                        displaySystemStatus(result.data);
+                        addLog(`실제 API에서 시스템 상태를 가져왔습니다. (응답시간: ${connectionStatus.responseTime}ms)`, 'success');
+                    } else {
+                        throw new Error(result.error);
+                    }
                 } else {
-                    throw new Error(result.error);
+                    throw connectionStatus;
                 }
                 
             } catch (error) {
+                const errorMessage = error.message || '연결 오류';
+                const suggestions = error.suggestions || [];
+                
                 document.getElementById('systemStatus').innerHTML = 
-                    '<div class="alert alert-warning"><i class="fas fa-exclamation-triangle"></i> API 서버 연결 확인 중... (CORS 제한으로 인해 직접 연결이 제한될 수 있습니다)</div>';
-                addLog(`상태 확인 오류: ${error.message}`, 'error');
+                    `<div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        API 서버 연결 실패: ${errorMessage}
+                        ${suggestions.length > 0 ? '<br><small>해결 방법: ' + suggestions.join(', ') + '</small>' : ''}
+                    </div>`;
+                addLog(`상태 확인 오류: ${errorMessage}`, 'error');
             }
         }
         
@@ -351,11 +364,10 @@
             document.getElementById('apiStatus').textContent = status;
         }
         
-        // 통계 업데이트
+        // 통계 업데이트 (Enhanced with network utilities)
         async function updateStats() {
             try {
-                const response = await fetch(`${API_BASE_URL}/api/stats`);
-                const result = await response.json();
+                const result = await networkUtils.get(`${API_BASE_URL}/api/stats`);
                 
                 if (result.success) {
                     const stats = result.data;
@@ -383,7 +395,7 @@
             }
         }
         
-        // Reddit 수집 트리거
+        // Reddit 수집 트리거 (Enhanced with network utilities)
         async function triggerCollection() {
             const button = event.target;
             const originalText = button.innerHTML;
@@ -394,18 +406,10 @@
             addLog('Production 환경에서 Reddit 포스트 수집을 시작합니다...', 'info');
             
             try {
-                const response = await fetch(`${API_BASE_URL}/api/trigger/collect`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        batch_size: 10,
-                        subreddits: ['programming', 'technology', 'webdev']
-                    })
+                const result = await networkUtils.post(`${API_BASE_URL}/api/trigger/collect`, {
+                    batch_size: 10,
+                    subreddits: ['programming', 'technology', 'webdev']
                 });
-                
-                const result = await response.json();
                 
                 if (result.success) {
                     addLog('수집 작업이 백그라운드에서 시작되었습니다.', 'success');
@@ -450,7 +454,7 @@
             }
         }
         
-        // 전체 파이프라인 실행
+        // 전체 파이프라인 실행 (Enhanced with network utilities)
         async function runFullPipeline() {
             const button = event.target;
             const originalText = button.innerHTML;
@@ -461,17 +465,9 @@
             addLog('Production 환경에서 전체 파이프라인을 시작합니다...', 'info');
             
             try {
-                const response = await fetch(`${API_BASE_URL}/api/trigger/pipeline`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        batch_size: 3
-                    })
+                const result = await networkUtils.post(`${API_BASE_URL}/api/trigger/pipeline`, {
+                    batch_size: 3
                 });
-                
-                const result = await response.json();
                 
                 if (result.success) {
                     addLog('전체 파이프라인이 백그라운드에서 시작되었습니다.', 'success');

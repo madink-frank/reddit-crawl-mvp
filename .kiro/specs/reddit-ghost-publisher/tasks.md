@@ -339,3 +339,53 @@
     - 템플릿/UX 테스트 (Article 템플릿 일관성, 태그 제한/표기 규칙, 이미지 폴백)
     - 최종 합격 기준 검증 (기능, 품질, 성능, 운영 모든 조건)
     - _Requirements: 11.34-11.40_
+
+- [x] 19. 실제 데이터 파이프라인 구현 (가짜 데이터 제거)
+  - [x] 19.1 CORS 설정 및 Ghost 대시보드 연동 수정
+    - Vercel API에 CORS 헤더 추가 (american-trends.ghost.io 도메인 허용)
+    - Ghost 호스팅 대시보드에서 API 호출 성공하도록 수정
+    - 네트워크 에러 처리 및 재시도 로직 강화
+    - _Requirements: 새로운 요구사항 - Ghost 대시보드 연동_
+
+  - [x] 19.2 실제 Reddit API 연동 구현
+    - 가짜 Reddit 데이터 제거하고 실제 PRAW 라이브러리 연동
+    - Reddit OAuth 인증 설정 (환경변수 기반)
+    - 실제 서브레딧에서 인기 게시글 수집 (programming, technology, webdev)
+    - Railway PostgreSQL에 실제 데이터 저장
+    - _Requirements: 1.1, 1.2, 1.3 - 실제 Reddit 수집_
+
+  - [x] 19.3 실제 OpenAI API 연동 구현
+    - 가짜 AI 처리 제거하고 실제 OpenAI GPT-4o-mini 연동
+    - Reddit 게시글을 한국어로 요약하는 프롬프트 구현
+    - 태그 추출 및 메타데이터 생성
+    - 토큰 사용량 추적 및 비용 관리
+    - _Requirements: 2.1, 2.2, 2.3 - 실제 AI 처리_
+
+  - [x] 19.4 실제 Ghost CMS 발행 구현
+    - 가짜 발행 로직 제거하고 실제 Ghost Admin API 연동
+    - JWT 토큰 생성 및 인증 구현
+    - AI 처리된 콘텐츠를 Ghost 블로그 글로 발행
+    - 이미지 업로드 및 메타데이터 설정
+    - _Requirements: 3.1, 3.2, 3.4 - 실제 Ghost 발행_
+
+  - [x] 19.5 실제 데이터베이스 연동 및 상태 관리
+    - Railway PostgreSQL에 실제 스키마 생성
+    - 게시글 상태 추적 (수집됨 → AI처리됨 → 발행됨)
+    - 실제 통계 데이터 계산 및 대시보드 표시
+    - 에러 로깅 및 재시도 메커니즘
+    - _Requirements: 5.1, 5.2, 5.3 - 실제 데이터 관리_
+
+- [x] 20. 전체 파이프라인 통합 테스트
+  - [x] 20.1 End-to-End 파이프라인 테스트
+    - Reddit 수집 → AI 처리 → Ghost 발행 전체 플로우 테스트
+    - Ghost 대시보드에서 실시간 진행 상황 모니터링
+    - 실제 블로그 글이 american-trends.ghost.io에 발행되는지 확인
+    - 에러 처리 및 복구 메커니즘 테스트
+    - _Requirements: 전체 시스템 통합, 12.7_
+
+  - [x] 20.2 프로덕션 환경 최적화
+    - API 응답 속도 최적화
+    - 대시보드 실시간 업데이트 개선
+    - 에러 메시지 및 사용자 경험 개선
+    - 로깅 및 모니터링 강화
+    - _Requirements: 사용자 경험 최적화, 12.8_

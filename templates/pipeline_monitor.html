@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 300;
+        }
+
+        .header p {
+            opacity: 0.8;
+            font-size: 1.1rem;
+        }
+
+        .controls {
+            padding: 20px 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0056b3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .status-idle { background: #e9ecef; color: #495057; }
+        .status-monitoring { background: #cce5ff; color: #0066cc; }
+        .status-running { background: #d4edda; color: #155724; }
+        .status-queued { background: #fff3cd; color: #856404; }
+        .status-completed { background: #d1ecf1; color: #0c5460; }
+        .status-error { background: #f8d7da; color: #721c24; }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .main-content {
+            padding: 30px;
+        }
+
+        .pipeline-overview {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stage-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .stage-card.active {
+            border-color: #007bff;
+            box-shadow: 0 4px 12px rgba(0,123,255,0.15);
+        }
+
+        .stage-card.completed {
+            border-color: #28a745;
+            background: #f8fff9;
+        }
+
+        .stage-card.error {
+            border-color: #dc3545;
+            background: #fff8f8;
+        }
+
+        .stage-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .stage-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        .stage-status {
+            font-size: 0.8rem;
+            padding: 4px 8px;
+            border-radius: 12px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007bff, #0056b3);
+            transition: width 0.5s ease;
+            border-radius: 4px;
+        }
+
+        .progress-text {
+            font-size: 0.9rem;
+            color: #6c757d;
+            text-align: center;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .metric-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            font-weight: 500;
+        }
+
+        .published-posts {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .published-posts h3 {
+            margin-bottom: 15px;
+            color: #2c3e50;
+        }
+
+        .post-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .post-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f3f4;
+        }
+
+        .post-item:last-child {
+            border-bottom: none;
+        }
+
+        .post-title {
+            flex: 1;
+            margin-right: 15px;
+            font-size: 0.9rem;
+        }
+
+        .post-link {
+            color: #007bff;
+            text-decoration: none;
+            font-size: 0.8rem;
+        }
+
+        .post-link:hover {
+            text-decoration: underline;
+        }
+
+        .verification-badge {
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .verified {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .not-verified {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .last-updated {
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            border: 1px solid #f5c6cb;
+        }
+
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .pipeline-overview {
+                grid-template-columns: 1fr;
+            }
+
+            .metrics-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔄 E2E Pipeline Monitor</h1>
+            <p>Real-time monitoring of Reddit → AI → Ghost publishing pipeline</p>
+        </div>
+
+        <div class="controls">
+            <button id="startBtn" class="btn btn-primary">Start Monitoring</button>
+            <button id="stopBtn" class="btn btn-danger" disabled>Stop Monitoring</button>
+            <div id="overallStatus" class="status-indicator status-idle">
+                <div class="status-dot"></div>
+                <span>Idle</span>
+            </div>
+            <div style="margin-left: auto;">
+                <span id="currentStage" style="font-weight: 500;">No active stage</span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div id="errorContainer"></div>
+            
+            <div class="pipeline-overview">
+                <div id="collectionStage" class="stage-card">
+                    <div class="stage-header">
+                        <div class="stage-title">📥 Collection</div>
+                        <div class="stage-status">Pending</div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text">0%</div>
+                </div>
+
+                <div id="processingStage" class="stage-card">
+                    <div class="stage-header">
+                        <div class="stage-title">🤖 AI Processing</div>
+                        <div class="stage-status">Pending</div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text">0%</div>
+                </div>
+
+                <div id="publishingStage" class="stage-card">
+                    <div class="stage-header">
+                        <div class="stage-title">📝 Publishing</div>
+                        <div class="stage-status">Pending</div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text">0%</div>
+                </div>
+
+                <div id="verificationStage" class="stage-card">
+                    <div class="stage-header">
+                        <div class="stage-title">✅ Verification</div>
+                        <div class="stage-status">Pending</div>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text">0%</div>
+                </div>
+            </div>
+
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div id="collectedCount" class="metric-value">0</div>
+                    <div class="metric-label">Posts Collected</div>
+                </div>
+                <div class="metric-card">
+                    <div id="processedCount" class="metric-value">0</div>
+                    <div class="metric-label">Posts Processed</div>
+                </div>
+                <div class="metric-card">
+                    <div id="publishedCount" class="metric-value">0</div>
+                    <div class="metric-label">Posts Published</div>
+                </div>
+                <div class="metric-card">
+                    <div id="verifiedCount" class="metric-value">0</div>
+                    <div class="metric-label">Posts Verified</div>
+                </div>
+            </div>
+
+            <div class="published-posts">
+                <h3>📋 Published Posts</h3>
+                <div id="postList" class="post-list">
+                    <div class="loading">No published posts yet...</div>
+                </div>
+            </div>
+
+            <div class="last-updated">
+                Last updated: <span id="lastUpdated">Never</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PipelineMonitor {
+            constructor() {
+                this.apiBase = '{{ api_base_url }}';
+                this.monitoring = false;
+                this.updateInterval = null;
+                
+                this.initializeElements();
+                this.bindEvents();
+                this.loadInitialStatus();
+            }
+
+            initializeElements() {
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.overallStatus = document.getElementById('overallStatus');
+                this.currentStage = document.getElementById('currentStage');
+                this.errorContainer = document.getElementById('errorContainer');
+                this.lastUpdated = document.getElementById('lastUpdated');
+                this.postList = document.getElementById('postList');
+
+                // Metric elements
+                this.collectedCount = document.getElementById('collectedCount');
+                this.processedCount = document.getElementById('processedCount');
+                this.publishedCount = document.getElementById('publishedCount');
+                this.verifiedCount = document.getElementById('verifiedCount');
+
+                // Stage elements
+                this.stages = {
+                    collection: document.getElementById('collectionStage'),
+                    processing: document.getElementById('processingStage'),
+                    publishing: document.getElementById('publishingStage'),
+                    verification: document.getElementById('verificationStage')
+                };
+            }
+
+            bindEvents() {
+                this.startBtn.addEventListener('click', () => this.startMonitoring());
+                this.stopBtn.addEventListener('click', () => this.stopMonitoring());
+            }
+
+            async loadInitialStatus() {
+                try {
+                    const response = await fetch(`${this.apiBase}/dashboard/api/pipeline/status`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.updateUI(data.data);
+                        
+                        if (data.monitoring_active) {
+                            this.monitoring = true;
+                            this.startBtn.disabled = true;
+                            this.stopBtn.disabled = false;
+                            this.startPeriodicUpdates();
+                        }
+                    }
+                } catch (error) {
+                    this.showError('Failed to load initial status: ' + error.message);
+                }
+            }
+
+            async startMonitoring() {
+                try {
+                    this.startBtn.disabled = true;
+                    
+                    const response = await fetch(`${this.apiBase}/dashboard/api/pipeline/start-monitoring`, {
+                        method: 'POST'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.monitoring = true;
+                        this.stopBtn.disabled = false;
+                        this.startPeriodicUpdates();
+                        this.clearError();
+                    } else {
+                        this.showError(data.message || 'Failed to start monitoring');
+                        this.startBtn.disabled = false;
+                    }
+                } catch (error) {
+                    this.showError('Failed to start monitoring: ' + error.message);
+                    this.startBtn.disabled = false;
+                }
+            }
+
+            async stopMonitoring() {
+                try {
+                    this.stopBtn.disabled = true;
+                    
+                    const response = await fetch(`${this.apiBase}/dashboard/api/pipeline/stop-monitoring`, {
+                        method: 'POST'
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.monitoring = false;
+                        this.startBtn.disabled = false;
+                        this.stopPeriodicUpdates();
+                        this.clearError();
+                    } else {
+                        this.showError(data.message || 'Failed to stop monitoring');
+                        this.stopBtn.disabled = false;
+                    }
+                } catch (error) {
+                    this.showError('Failed to stop monitoring: ' + error.message);
+                    this.stopBtn.disabled = false;
+                }
+            }
+
+            startPeriodicUpdates() {
+                if (this.updateInterval) {
+                    clearInterval(this.updateInterval);
+                }
+                
+                this.updateInterval = setInterval(() => {
+                    this.updateStatus();
+                }, 5000); // Update every 5 seconds
+                
+                // Initial update
+                this.updateStatus();
+            }
+
+            stopPeriodicUpdates() {
+                if (this.updateInterval) {
+                    clearInterval(this.updateInterval);
+                    this.updateInterval = null;
+                }
+            }
+
+            async updateStatus() {
+                if (!this.monitoring) return;
+                
+                try {
+                    const response = await fetch(`${this.apiBase}/dashboard/api/pipeline/status`);
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        this.updateUI(data.data);
+                        this.clearError();
+                    } else {
+                        this.showError('Failed to get status: ' + (data.error || 'Unknown error'));
+                    }
+                } catch (error) {
+                    this.showError('Failed to update status: ' + error.message);
+                }
+            }
+
+            updateUI(status) {
+                // Update overall status
+                this.updateOverallStatus(status.overall_status, status.current_stage);
+                
+                // Update metrics
+                this.updateMetrics(status.metrics);
+                
+                // Update stages
+                this.updateStages(status.stages, status.current_stage);
+                
+                // Update published posts
+                this.updatePublishedPosts(status.published_urls);
+                
+                // Update timestamp
+                this.lastUpdated.textContent = new Date(status.last_updated).toLocaleString();
+            }
+
+            updateOverallStatus(status, currentStage) {
+                // Update status indicator
+                this.overallStatus.className = `status-indicator status-${status}`;
+                this.overallStatus.querySelector('span').textContent = status.charAt(0).toUpperCase() + status.slice(1);
+                
+                // Update current stage
+                if (currentStage && currentStage !== 'none') {
+                    this.currentStage.textContent = `Current: ${currentStage.charAt(0).toUpperCase() + currentStage.slice(1)}`;
+                } else {
+                    this.currentStage.textContent = 'No active stage';
+                }
+            }
+
+            updateMetrics(metrics) {
+                this.collectedCount.textContent = metrics.posts_collected || 0;
+                this.processedCount.textContent = metrics.posts_processed || 0;
+                this.publishedCount.textContent = metrics.posts_published || 0;
+                this.verifiedCount.textContent = metrics.posts_verified || 0;
+            }
+
+            updateStages(stages, currentStage) {
+                Object.entries(stages).forEach(([stageName, stageData]) => {
+                    const stageElement = this.stages[stageName];
+                    if (!stageElement) return;
+                    
+                    // Update stage card class
+                    stageElement.className = 'stage-card';
+                    if (stageName === currentStage) {
+                        stageElement.classList.add('active');
+                    } else if (stageData.status === 'completed') {
+                        stageElement.classList.add('completed');
+                    } else if (stageData.status === 'error') {
+                        stageElement.classList.add('error');
+                    }
+                    
+                    // Update status badge
+                    const statusElement = stageElement.querySelector('.stage-status');
+                    statusElement.textContent = stageData.status.charAt(0).toUpperCase() + stageData.status.slice(1);
+                    statusElement.className = `stage-status status-${stageData.status}`;
+                    
+                    // Update progress bar
+                    const progressFill = stageElement.querySelector('.progress-fill');
+                    const progressText = stageElement.querySelector('.progress-text');
+                    const progress = stageData.progress || 0;
+                    
+                    progressFill.style.width = `${progress}%`;
+                    progressText.textContent = `${progress}%`;
+                });
+            }
+
+            async updatePublishedPosts(publishedUrls) {
+                try {
+                    const response = await fetch(`${this.apiBase}/dashboard/api/pipeline/published-posts`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.posts.length > 0) {
+                        this.postList.innerHTML = data.posts.map(post => `
+                            <div class="post-item">
+                                <div class="post-title">${this.escapeHtml(post.title)}</div>
+                                <div>
+                                    <span class="verification-badge ${post.verified ? 'verified' : 'not-verified'}">
+                                        ${post.verified ? 'Verified' : 'Pending'}
+                                    </span>
+                                    <a href="${post.ghost_url}" target="_blank" class="post-link">View Post</a>
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        this.postList.innerHTML = '<div class="loading">No published posts yet...</div>';
+                    }
+                } catch (error) {
+                    console.error('Failed to update published posts:', error);
+                }
+            }
+
+            showError(message) {
+                this.errorContainer.innerHTML = `<div class="error-message">${this.escapeHtml(message)}</div>`;
+            }
+
+            clearError() {
+                this.errorContainer.innerHTML = '';
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+        }
+
+        // Initialize the monitor when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PipelineMonitor();
+        });
+    </script>
+</body>
+</html>

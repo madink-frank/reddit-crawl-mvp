@@ -109,27 +109,45 @@ class EnvironmentAuthMiddleware(BaseHTTPMiddleware):
 
 
 def setup_cors_middleware(app):
-    """Setup CORS middleware with basic settings"""
+    """Setup CORS middleware with enhanced Ghost dashboard integration"""
     from fastapi.middleware.cors import CORSMiddleware
     
     settings = get_settings()
     
-    # CORS settings for external access
-    allowed_origins = ["*"] if settings.debug else [
+    # Enhanced CORS settings for Ghost dashboard integration
+    allowed_origins = [
         "https://american-trends.ghost.io",
         "https://www.american-trends.ghost.io",
-        "http://localhost:8083",
         "http://localhost:3000",
-        "*"  # Allow all origins for production dashboard access
+        "http://localhost:8000",
+        "http://localhost:8083",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:8083"
     ]
+    
+    # Add wildcard for development
+    if settings.debug:
+        allowed_origins.append("*")
     
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
-        expose_headers=["X-Total-Count", "X-Page-Count"]
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+        allow_headers=[
+            "Accept",
+            "Accept-Language",
+            "Content-Language",
+            "Content-Type",
+            "Authorization",
+            "X-API-Key",
+            "X-Requested-With",
+            "X-CSRF-Token",
+            "Cache-Control"
+        ],
+        expose_headers=["X-Total-Count", "X-Page-Count", "X-Rate-Limit", "X-Rate-Limit-Remaining"],
+        max_age=86400  # 24 hours
     )
 
 

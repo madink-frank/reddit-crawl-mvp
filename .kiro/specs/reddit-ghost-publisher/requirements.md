@@ -201,3 +201,18 @@ Reddit Ghost Publisher는 Reddit 인기 글을 수집하고 한국어 요약을 
 
 **최종 합격 기준**:
 40. WHEN 릴리스 게이트를 통과할 때 THEN 기능(Req 1-10의 각 섹션 최소 1개 이상 핵심 케이스 Pass), 품질(유닛 커버리지 ≥ 70%, Postman 스모크 100% 통과), 성능(p95 ≤ 300ms, E2E 평균 ≤ 5분, 실패율 < 5%), 운영(Slack 알림 정상, 백업/복구 리허설 성공) 모든 조건을 만족해야 한다
+
+### Requirement 12: 실제 데이터 파이프라인 구현
+
+**User Story:** Ghost 대시보드에서 실제 Reddit 데이터를 수집하고 AI로 처리하여 Ghost 블로그에 발행하고 싶다.
+
+#### Acceptance Criteria
+
+1. WHEN Ghost 대시보드에서 API를 호출할 때 THEN 시스템은 CORS 헤더를 설정하여 american-trends.ghost.io에서 접근을 허용해야 한다
+2. WHEN Reddit API를 연동할 때 THEN 시스템은 가짜 데이터를 제거하고 실제 PRAW 라이브러리로 Reddit에서 데이터를 수집해야 한다
+3. WHEN AI 처리를 할 때 THEN 시스템은 가짜 AI 응답을 제거하고 실제 OpenAI API로 한국어 요약과 태그를 생성해야 한다
+4. WHEN Ghost에 발행할 때 THEN 시스템은 가짜 발행 로직을 제거하고 실제 Ghost Admin API로 블로그 글을 발행해야 한다
+5. WHEN 데이터베이스를 사용할 때 THEN 시스템은 Railway PostgreSQL에 실제 스키마를 생성하고 실제 데이터를 저장해야 한다
+6. WHEN 대시보드에서 통계를 표시할 때 THEN 시스템은 가짜 통계를 제거하고 실제 데이터베이스에서 계산된 통계를 표시해야 한다
+7. WHEN 전체 파이프라인을 실행할 때 THEN 시스템은 Reddit 수집 → AI 처리 → Ghost 발행이 실제로 작동하여 american-trends.ghost.io에 새 글이 발행되어야 한다
+8. WHEN 에러가 발생할 때 THEN 시스템은 실제 에러 처리와 재시도 메커니즘이 작동해야 한다

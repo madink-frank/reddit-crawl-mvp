@@ -14,16 +14,20 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import get_settings
 from app.monitoring.logging import configure_logging, get_logger
+from app.monitoring.enhanced_logging import setup_enhanced_logging, get_enhanced_logger
 from app.api.middleware.security_mvp import (
     SecurityHeadersMiddleware,
     InputValidationMiddleware,
     EnvironmentAuthMiddleware,
     setup_cors_middleware
 )
+from app.api.middleware.performance_optimization import setup_production_optimizations
+from app.api.middleware.enhanced_error_handling import setup_enhanced_error_handling
 
 # Configure enhanced logging system
 configure_logging()
-logger = get_logger(__name__)
+setup_enhanced_logging()
+logger = get_enhanced_logger(__name__)
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -170,8 +174,15 @@ def create_app() -> FastAPI:
     # 6. CORS middleware (innermost)
     setup_cors_middleware(app)
     
+    # Setup production optimizations
+    setup_production_optimizations(app)
+    setup_enhanced_error_handling(app)
+    
     # Include MVP routers
-    from app.api.routes import health_mvp, triggers_mvp, status_mvp, metrics_mvp, takedown_mvp, monitoring, manual_scaling, performance, dashboard
+    from app.api.routes import (
+        health_mvp, triggers_mvp, status_mvp, metrics_mvp, takedown_mvp, 
+        monitoring, manual_scaling, performance, dashboard, realtime_monitoring
+    )
     
     app.include_router(health_mvp.router, tags=["Health"])
     app.include_router(triggers_mvp.router, prefix="/api/v1", tags=["Triggers"])
@@ -182,6 +193,7 @@ def create_app() -> FastAPI:
     app.include_router(manual_scaling.router, prefix="/api/v1", tags=["Manual Scaling"])
     app.include_router(performance.router, prefix="/api/v1", tags=["Performance"])
     app.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+    app.include_router(realtime_monitoring.router, prefix="/dashboard", tags=["Real-time Monitoring"])
     
     return app
 

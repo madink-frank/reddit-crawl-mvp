@@ -48,8 +48,8 @@ def upload_admin_page():
         # Ghost 페이지 데이터
         page_data = {
             "pages": [{
-                "title": "Reddit Publisher Admin",
-                "slug": "reddit-publisher-admin",
+                "title": "Reddit Publisher Admin Dashboard",
+                "slug": "reddit-admin-dashboard-v2",
                 "html": html_content,
                 "status": "published",
                 "visibility": "public",  # 공개 페이지로 설정
@@ -63,7 +63,7 @@ def upload_admin_page():
         
         # 기존 페이지 확인
         existing_response = requests.get(
-            f"{ghost_api_url}/ghost/api/admin/pages/slug/reddit-publisher-admin/",
+            f"{ghost_api_url}/ghost/api/admin/pages/slug/reddit-admin-dashboard-v2/",
             headers=headers,
             timeout=10
         )
