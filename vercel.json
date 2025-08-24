@@ -10,6 +10,12 @@
       "destination": "/api/$1"
     }
   ],
+  "routes": [
+    {
+      "src": "/",
+      "dest": "/index.html"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
