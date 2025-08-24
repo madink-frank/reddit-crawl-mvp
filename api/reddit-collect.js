@@ -36,17 +36,11 @@ module.exports = (req, res) => {
     const redditClientSecret = process.env.REDDIT_CLIENT_SECRET;
     
     if (!redditClientId || !redditClientSecret) {
-      return res.status(200).json({
-        success: true,
-        data: {
-          collected_posts: 0,
-          message: 'Reddit API credentials not configured - using mock mode',
-          mock_data: {
-            subreddits: subreddits,
-            expected_posts: limit,
-            note: 'Configure REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in Vercel environment variables'
-          }
-        }
+      return res.status(400).json({
+        success: false,
+        error: 'Reddit API credentials not configured',
+        message: 'Configure REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in Vercel environment variables',
+        required_env_vars: ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET']
       });
     }
     
@@ -169,17 +163,14 @@ module.exports = (req, res) => {
     } catch (apiError) {
       console.error('Reddit API error:', apiError);
       
-      // Fallback to mock data if API fails
-      return res.status(200).json({
-        success: true,
-        data: {
-          collected_posts: 0,
-          message: 'Reddit API error - falling back to mock mode',
-          error: apiError.message,
-          subreddits_processed: subreddits,
-          timestamp: new Date().toISOString(),
-          note: 'Check Reddit API credentials and rate limits'
-        }
+      // Reddit API 실패 시 에러 반환
+      return res.status(500).json({
+        success: false,
+        error: 'Reddit API call failed',
+        details: apiError.message,
+        subreddits_requested: subreddits,
+        timestamp: new Date().toISOString(),
+        message: 'Check Reddit API credentials and rate limits'
       });
     }
     

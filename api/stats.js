@@ -169,34 +169,17 @@ module.exports = (req, res) => {
       }
     }
     
-    // 파일 기반 데이터베이스로 폴백
-    const { db } = await import('./database.js');
-    
-    // 실제 수집 데이터가 있는지 확인하고 업데이트
-    db.initSampleData();
-    
-    const stats = db.getStats();
-    const recentPosts = db.getPosts(5);
-    
+    // 데이터베이스 연결 실패 시 빈 데이터 반환
     return res.status(200).json({
       success: true,
-      total_posts: stats.total_posts,
-      processed_posts: stats.ai_processed,
-      published_posts: stats.published,
-      collected_today: stats.collected_today,
-      success_rate: stats.success_rate,
-      recent_posts: recentPosts.map(post => ({
-        id: post.id,
-        title: post.title,
-        subreddit: post.subreddit,
-        score: post.score,
-        comments: post.comments,
-        processed: post.processed,
-        published: post.published,
-        ghost_url: post.ghost_url,
-        created_at: post.created_at
-      })),
-      data_source: 'file_database_fallback',
+      total_posts: 0,
+      processed_posts: 0,
+      published_posts: 0,
+      collected_today: 0,
+      success_rate: 0,
+      recent_posts: [],
+      data_source: 'no_database_connection',
+      message: 'No database connection available. Configure SUPABASE_URL/DATABASE_URL.',
       timestamp: new Date().toISOString()
     });
     
@@ -281,39 +264,14 @@ module.exports = (req, res) => {
     } catch (dbError) {
       console.error('Database connection error:', dbError);
       
-      // Fallback to file database if PostgreSQL fails
-      const { db } = await import('./database.js');
-      db.initSampleData();
-      
-      const stats = db.getStats();
-      const recentPosts = db.getPosts(5);
-      
-      const statsData = {
-        success: true,
-        data: {
-          total_posts: stats.total_posts,
-          ai_processed: stats.ai_processed,
-          published: stats.published,
-          collected_today: stats.collected_today,
-          success_rate: stats.success_rate,
-          recent_posts: recentPosts.map(post => ({
-            id: post.id,
-            title: post.title,
-            subreddit: post.subreddit,
-            score: post.score,
-            comments: post.comments,
-            processed: post.processed,
-            published: post.published,
-            ghost_url: post.ghost_url,
-            created_at: post.created_at
-          })),
-          data_source: 'file_database_fallback',
-          db_error: dbError.message
-        },
+      // 데이터베이스 연결 실패 시 에러 반환
+      return res.status(500).json({
+        success: false,
+        error: 'Database connection failed',
+        db_error: dbError.message,
+        message: 'Configure DATABASE_URL or SUPABASE_URL environment variables',
         timestamp: new Date().toISOString()
-      };
-      
-      return res.status(200).json(statsData);
+      });
     }
   } catch (error) {
     console.error('Stats error:', error);
