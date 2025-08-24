@@ -12,6 +12,10 @@
     {
       "source": "/dashboard",
       "destination": "/index.html"
+    },
+    {
+      "source": "/api-docs",
+      "destination": "/api/index"
     }
   ],
   "headers": [
