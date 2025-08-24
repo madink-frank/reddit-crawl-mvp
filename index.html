@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -25,7 +26,7 @@
         .dashboard-container {
             background: white;
             border-radius: 15px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             margin: 20px;
             overflow: hidden;
         }
@@ -48,7 +49,7 @@
             border-radius: 10px;
             padding: 20px;
             margin: 15px 0;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s ease;
         }
 
@@ -72,7 +73,7 @@
 
         .btn-action:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
         }
 
         .log-container {
@@ -101,26 +102,54 @@
             margin-right: 8px;
         }
 
-        .status-online { background-color: var(--success-color); }
-        .status-offline { background-color: var(--danger-color); }
-        .status-warning { background-color: var(--warning-color); }
-
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-            100% { transform: scale(1); }
+        .status-online {
+            background-color: var(--success-color);
         }
 
-        .pulse { animation: pulse 2s infinite; }
+        .status-offline {
+            background-color: var(--danger-color);
+        }
+
+        .status-warning {
+            background-color: var(--warning-color);
+        }
+
+        .progress-ring {
+            transform: rotate(-90deg);
+        }
+
+        .progress-ring-circle {
+            transition: stroke-dashoffset 0.35s;
+            transform-origin: 50% 50%;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
     </style>
-</head><body>
- 
-   <div class="dashboard-container">
+</head>
+
+<body>
+
+    <div class="dashboard-container">
         <!-- Header -->
         <div class="header">
             <h1><i class="fab fa-reddit"></i> Reddit Ghost Publisher</h1>
             <p class="mb-0">실시간 콘텐츠 수집 및 발행 대시보드</p>
-            <small class="text-light">🌐 Vercel 배포 버전 - 실제 Reddit API 연동</small>
         </div>
 
         <!-- Main Content -->
@@ -185,7 +214,8 @@
                     <div class="status-card">
                         <h4><i class="fas fa-play-circle"></i> 빠른 작업</h4>
                         <div class="text-center">
-                            <button class="btn btn-success btn-action" onclick="startRedditCollection()" id="collectBtn">
+                            <button class="btn btn-success btn-action" onclick="startRedditCollection()"
+                                id="collectBtn">
                                 <i class="fas fa-reddit"></i> Reddit 수집 시작
                             </button>
                             <button class="btn btn-info btn-action" onclick="runFullPipeline()" id="pipelineBtn">
@@ -200,8 +230,8 @@
                         </div>
                     </div>
                 </div>
-            </div> 
-           <!-- Real-time Monitoring Row -->
+            </div>
+            <!-- Real-time Monitoring Row -->
             <div class="row mb-4">
                 <div class="col-md-8">
                     <div class="status-card">
@@ -246,23 +276,23 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
+
     <script>
         // Global variables
         let isMonitoring = false;
         let monitoringInterval = null;
         let progressChart = null;
         let collectionStartTime = null;
-        
+
         // API Base URL
         const API_BASE = window.location.origin;
-        
+
         // Initialize dashboard
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             initializeChart();
             checkSystemHealth();
-            addLog('🚀 Vercel 대시보드 초기화 완료 - 실제 Reddit API 연동 준비됨', 'success');
-            
+            addLog('대시보드 초기화 완료', 'info');
+
             // Auto-refresh every 30 seconds
             setInterval(updateMetrics, 30000);
         });
@@ -309,3 +339,363 @@
                 }
             });
         }
+        // System health check
+        async function checkSystemHealth() {
+            try {
+                addLog('시스템 상태 확인 중...', 'info');
+
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    updateSystemStatus('online', '시스템 정상 작동 중');
+                    addLog('시스템 상태: 정상', 'success');
+                    updateMetrics();
+                } else {
+                    updateSystemStatus('warning', '시스템 경고 상태');
+                    addLog('시스템 상태: 경고', 'warning');
+                }
+            } catch (error) {
+                updateSystemStatus('offline', '시스템 연결 실패');
+                addLog(`시스템 연결 실패: ${error.message}`, 'error');
+            }
+        }
+
+        // Update system status indicator
+        function updateSystemStatus(status, message) {
+            const indicator = document.querySelector('.status-indicator');
+            const statusText = document.getElementById('statusText');
+
+            indicator.className = `status-indicator status-${status}`;
+            statusText.textContent = message;
+        }
+
+        // Start Reddit collection
+        async function startRedditCollection() {
+            const btn = document.getElementById('collectBtn');
+            const originalText = btn.innerHTML;
+
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 수집 중...';
+
+                addLog('Reddit 수집 시작...', 'info');
+                showActionStatus('Reddit 게시글 수집을 시작합니다...', 'info');
+
+                const response = await fetch(`${API_BASE}/api/trigger/collect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        subreddits: ['programming', 'technology', 'webdev'],
+                        batch_size: 10
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    addLog(`Reddit 수집 성공: ${data.message}`, 'success');
+                    showActionStatus('Reddit 수집이 시작되었습니다. 실시간 모니터링을 확인하세요.', 'success');
+
+                    // Start monitoring
+                    startMonitoring();
+                    collectionStartTime = new Date();
+                } else {
+                    addLog(`Reddit 수집 실패: ${data.error}`, 'error');
+                    showActionStatus(`수집 실패: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                addLog(`Reddit 수집 오류: ${error.message}`, 'error');
+                showActionStatus(`수집 오류: ${error.message}`, 'danger');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+
+        // Run full pipeline
+        async function runFullPipeline() {
+            const btn = document.getElementById('pipelineBtn');
+            const originalText = btn.innerHTML;
+
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 실행 중...';
+
+                addLog('전체 파이프라인 실행 시작...', 'info');
+                showActionStatus('전체 파이프라인을 실행합니다 (수집 → AI 처리 → Ghost 발행)...', 'info');
+
+                const response = await fetch(`${API_BASE}/api/trigger/pipeline`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        subreddits: ['programming', 'technology', 'webdev'],
+                        batch_size: 5
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    addLog(`전체 파이프라인 시작: ${data.message}`, 'success');
+                    showActionStatus('전체 파이프라인이 시작되었습니다. 완료까지 5-10분 소요됩니다.', 'success');
+
+                    // Start intensive monitoring
+                    startMonitoring();
+                    collectionStartTime = new Date();
+                } else {
+                    addLog(`파이프라인 실행 실패: ${data.error}`, 'error');
+                    showActionStatus(`파이프라인 실행 실패: ${data.error}`, 'danger');
+                }
+            } catch (error) {
+                addLog(`파이프라인 오류: ${error.message}`, 'error');
+                showActionStatus(`파이프라인 오류: ${error.message}`, 'danger');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        // Start real-time monitoring
+        function startMonitoring() {
+            if (isMonitoring) return;
+
+            isMonitoring = true;
+            addLog('실시간 모니터링 시작', 'info');
+
+            // Update every 5 seconds during active monitoring
+            monitoringInterval = setInterval(async () => {
+                await updateMetrics();
+                await updateRecentPosts();
+            }, 5000);
+
+            // Stop monitoring after 30 minutes
+            setTimeout(() => {
+                stopMonitoring();
+            }, 30 * 60 * 1000);
+        }
+
+        // Stop monitoring
+        function stopMonitoring() {
+            if (!isMonitoring) return;
+
+            isMonitoring = false;
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+                monitoringInterval = null;
+            }
+            addLog('실시간 모니터링 중지', 'info');
+        }
+
+        // Update metrics
+        async function updateMetrics() {
+            try {
+                const response = await fetch(`${API_BASE}/api/stats`);
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Update metric displays
+                    document.getElementById('collectedCount').textContent = data.total_posts || 0;
+                    document.getElementById('processedCount').textContent = data.processed_posts || 0;
+                    document.getElementById('publishedCount').textContent = data.published_posts || 0;
+
+                    // Calculate success rate
+                    const successRate = data.total_posts > 0 ?
+                        Math.round((data.published_posts / data.total_posts) * 100) : 0;
+                    document.getElementById('successRate').textContent = `${successRate}%`;
+
+                    // Update chart if monitoring
+                    if (isMonitoring && progressChart) {
+                        updateChart(data);
+                    }
+
+                    // Log significant changes
+                    if (data.total_posts > 0) {
+                        addLog(`통계 업데이트: 수집 ${data.total_posts}, 처리 ${data.processed_posts}, 발행 ${data.published_posts}`, 'info');
+                    }
+                }
+            } catch (error) {
+                addLog(`통계 업데이트 실패: ${error.message}`, 'error');
+            }
+        }
+
+        // Update chart with new data
+        function updateChart(data) {
+            const now = new Date().toLocaleTimeString();
+
+            // Add new data point
+            progressChart.data.labels.push(now);
+            progressChart.data.datasets[0].data.push(data.total_posts || 0);
+            progressChart.data.datasets[1].data.push(data.processed_posts || 0);
+            progressChart.data.datasets[2].data.push(data.published_posts || 0);
+
+            // Keep only last 20 data points
+            if (progressChart.data.labels.length > 20) {
+                progressChart.data.labels.shift();
+                progressChart.data.datasets.forEach(dataset => dataset.data.shift());
+            }
+
+            progressChart.update('none');
+        }
+
+        // Update recent posts
+        async function updateRecentPosts() {
+            try {
+                const response = await fetch(`${API_BASE}/api/recent-posts?limit=5`);
+                const data = await response.json();
+
+                if (response.ok && data.posts) {
+                    const container = document.getElementById('recentPosts');
+
+                    if (data.posts.length > 0) {
+                        container.innerHTML = data.posts.map(post => `
+                            <div class="log-entry">
+                                <div class="fw-bold">${post.title.substring(0, 50)}...</div>
+                                <small class="text-muted">
+                                    r/${post.subreddit} • ${new Date(post.created_at).toLocaleTimeString()}
+                                    ${post.ghost_url ? ' • <span class="text-success">발행됨</span>' : ''}
+                                    ${post.processed ? ' • <span class="text-info">AI 처리됨</span>' : ''}
+                                </small>
+                            </div>
+                        `).join('');
+                    } else {
+                        container.innerHTML = '<div class="text-muted text-center">아직 수집된 게시글이 없습니다</div>';
+                    }
+                } else {
+                    document.getElementById('recentPosts').innerHTML = '<div class="text-muted text-center">데이터 로딩 중...</div>';
+                }
+            } catch (error) {
+                console.error('Recent posts update failed:', error);
+                document.getElementById('recentPosts').innerHTML = '<div class="text-muted text-center">데이터 로딩 실패</div>';
+            }
+        }
+
+        // Show action status
+        function showActionStatus(message, type) {
+            const statusDiv = document.getElementById('actionStatus');
+            statusDiv.className = `alert alert-${type}`;
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 10000);
+        }
+
+        // Add log entry
+        function addLog(message, type = 'info') {
+            const logsContainer = document.getElementById('systemLogs');
+            const timestamp = new Date().toLocaleTimeString();
+
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+
+            let typeClass = 'text-muted';
+            let typeLabel = 'INFO';
+
+            switch (type) {
+                case 'success':
+                    typeClass = 'text-success';
+                    typeLabel = 'SUCCESS';
+                    break;
+                case 'warning':
+                    typeClass = 'text-warning';
+                    typeLabel = 'WARNING';
+                    break;
+                case 'error':
+                    typeClass = 'text-danger';
+                    typeLabel = 'ERROR';
+                    break;
+            }
+
+            logEntry.innerHTML = `
+                <span class="text-muted">[${timestamp}]</span>
+                <span class="${typeClass}">[${typeLabel}]</span>
+                ${message}
+            `;
+
+            logsContainer.appendChild(logEntry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+
+            // Keep only last 100 log entries
+            while (logsContainer.children.length > 100) {
+                logsContainer.removeChild(logsContainer.firstChild);
+            }
+        }
+
+        // Clear logs
+        function clearLogs() {
+            document.getElementById('systemLogs').innerHTML = '';
+            addLog('로그가 지워졌습니다', 'info');
+        }
+
+        // View Ghost blog
+        function viewGhostBlog() {
+            window.open('https://american-trends.ghost.io', '_blank');
+            addLog('Ghost 블로그 열기', 'info');
+        }
+    </script>
+</body>
+
+</html> //
+Enhanced monitoring functions
+function enhanceMonitoring() {
+// Add collection progress tracking
+if (isMonitoring && collectionStartTime) {
+const elapsed = Math.round((Date.now() - collectionStartTime.getTime()) / 1000);
+
+// Update progress indicator
+const progressElement = document.querySelector('.progress-fill');
+if (progressElement) {
+const progress = Math.min((elapsed / 300) * 100, 100); // 5 minutes max
+progressElement.style.width = `${progress}%`;
+}
+
+// Log periodic updates
+if (elapsed % 15 === 0 && elapsed > 0) {
+addLog(`수집 진행 중... ${elapsed}초 경과`, 'info');
+}
+}
+}
+
+// Auto-enhance monitoring every 3 seconds
+setInterval(enhanceMonitoring, 3000);
+
+// Add collection status indicator
+function updateCollectionStatus(status) {
+const statusElement = document.getElementById('systemStatus');
+if (statusElement) {
+const indicator = statusElement.querySelector('.status-indicator');
+const text = statusElement.querySelector('#statusText');
+
+switch(status) {
+case 'collecting':
+indicator.className = 'status-indicator status-warning pulse';
+text.textContent = '🔄 Reddit 수집 진행 중...';
+break;
+case 'processing':
+indicator.className = 'status-indicator status-warning pulse';
+text.textContent = '🤖 AI 처리 진행 중...';
+break;
+case 'publishing':
+indicator.className = 'status-indicator status-warning pulse';
+text.textContent = '👻 Ghost 발행 진행 중...';
+break;
+case 'completed':
+indicator.className = 'status-indicator status-online';
+text.textContent = '✅ 파이프라인 완료';
+break;
+default:
+indicator.className = 'status-indicator status-online';
+text.textContent = '🟢 시스템 정상 작동 중';
+}
+}
+}
+</script>
+</body>
+
+</html>
