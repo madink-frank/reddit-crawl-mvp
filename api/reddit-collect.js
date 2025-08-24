@@ -31,18 +31,9 @@ module.exports = (req, res) => {
   try {
     const { subreddits = ['programming', 'technology', 'webdev'], limit = 10 } = req.body || {};
     
-    // Reddit API 설정
-    const redditClientId = process.env.REDDIT_CLIENT_ID;
-    const redditClientSecret = process.env.REDDIT_CLIENT_SECRET;
-    
-    if (!redditClientId || !redditClientSecret) {
-      return res.status(400).json({
-        success: false,
-        error: 'Reddit API credentials not configured',
-        message: 'Configure REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET in Vercel environment variables',
-        required_env_vars: ['REDDIT_CLIENT_ID', 'REDDIT_CLIENT_SECRET']
-      });
-    }
+    // Reddit 공개 JSON API 사용 (자격 증명 불필요)
+    console.log(`Starting Reddit collection from subreddits: ${subreddits.join(', ')}`);
+    console.log(`Target limit: ${limit} posts`);
     
     // 실제 Reddit API 호출 구현
     try {
