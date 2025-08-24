@@ -13,7 +13,7 @@ module.exports = (req, res) => {
   
   // Serve the dashboard HTML
   try {
-    const indexPath = path.join(process.cwd(), 'index.html');
+    const indexPath = path.join(process.cwd(), 'public/index.html');
     const html = fs.readFileSync(indexPath, 'utf8');
     
     res.setHeader('Content-Type', 'text/html');
