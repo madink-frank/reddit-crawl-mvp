@@ -1,4 +1,4 @@
-module.exports = (req, res) => {
+module.exports = async (req, res) => {
   // Enhanced CORS headers for Ghost dashboard integration
   const allowedOrigins = [
     'https://american-trends.ghost.io',
