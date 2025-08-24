@@ -6,14 +6,12 @@
   },
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/api/index"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/",
-      "dest": "/index.html"
     }
   ],
   "headers": [
