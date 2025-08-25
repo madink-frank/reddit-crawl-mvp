@@ -35,12 +35,44 @@ module.exports = async (req, res) => {
     console.log(`Starting Reddit collection from subreddits: ${subreddits.join(', ')}`);
     console.log(`Target limit: ${limit} posts`);
     
+    // Helper function to fetch Reddit data (정의를 먼저 해야 함)
+    function fetchRedditData(url) {
+      return new Promise((resolve, reject) => {
+        const https = require('https');
+        const options = {
+          headers: {
+            'User-Agent': 'reddit-ghost-publisher/1.0.0 (by /u/reddit-publisher)'
+          }
+        };
+        
+        console.log(`Fetching Reddit data from: ${url}`);
+        
+        https.get(url, options, (response) => {
+          let data = '';
+          
+          response.on('data', (chunk) => {
+            data += chunk;
+          });
+          
+          response.on('end', () => {
+            try {
+              const jsonData = JSON.parse(data);
+              console.log(`Reddit API response received, status: ${response.statusCode}`);
+              resolve(jsonData);
+            } catch (parseError) {
+              console.error('JSON parse error:', parseError.message);
+              reject(parseError);
+            }
+          });
+        }).on('error', (error) => {
+          console.error('HTTPS request error:', error.message);
+          reject(error);
+        });
+      });
+    }
+    
     // 실제 Reddit API 호출 구현
     try {
-      // Reddit API 없이 직접 HTTP 요청으로 공개 데이터 수집
-      const https = require('https');
-      const { URL } = require('url');
-      
       let totalCollected = 0;
       const collectedPosts = [];
       
@@ -55,21 +87,25 @@ module.exports = async (req, res) => {
           const redditData = await fetchRedditData(redditUrl);
           
           if (redditData && redditData.data && redditData.data.children) {
+            console.log(`✅ Found ${redditData.data.children.length} posts in r/${subreddit}`);
             for (const child of redditData.data.children) {
               const post = child.data;
               
               // NSFW 필터링
               if (post.over_18) {
+                console.log(`⏭️ Skipping NSFW post: ${post.title}`);
                 continue;
               }
               
               // 스티키 게시글 제외
               if (post.stickied) {
+                console.log(`⏭️ Skipping stickied post: ${post.title}`);
                 continue;
               }
               
               // 삭제된 게시글 제외
               if (post.removed_by_category || !post.title) {
+                console.log(`⏭️ Skipping removed/deleted post`);
                 continue;
               }
               
@@ -92,11 +128,15 @@ module.exports = async (req, res) => {
               
               collectedPosts.push(postData);
               totalCollected++;
+              console.log(`📝 Collected post ${totalCollected}: "${post.title}" (score: ${post.score})`);
               
               if (totalCollected >= limit) {
+                console.log(`🎯 Reached target limit of ${limit} posts`);
                 break;
               }
             }
+          } else {
+            console.log(`❌ No data found for r/${subreddit} - API response structure:`, JSON.stringify(redditData, null, 2));
           }
           
           if (totalCollected >= limit) {
@@ -104,40 +144,13 @@ module.exports = async (req, res) => {
           }
           
         } catch (subredditError) {
-          console.error(`Error collecting from r/${subreddit}:`, subredditError.message);
+          console.error(`❌ Error collecting from r/${subreddit}:`, subredditError.message);
+          console.error('Full error:', subredditError);
           continue;
         }
       }
       
-      // Helper function to fetch Reddit data
-      function fetchRedditData(url) {
-        return new Promise((resolve, reject) => {
-          const options = {
-            headers: {
-              'User-Agent': 'reddit-ghost-publisher/1.0.0 (by /u/reddit-publisher)'
-            }
-          };
-          
-          https.get(url, options, (response) => {
-            let data = '';
-            
-            response.on('data', (chunk) => {
-              data += chunk;
-            });
-            
-            response.on('end', () => {
-              try {
-                const jsonData = JSON.parse(data);
-                resolve(jsonData);
-              } catch (parseError) {
-                reject(parseError);
-              }
-            });
-          }).on('error', (error) => {
-            reject(error);
-          });
-        });
-      }
+
       
       return res.status(200).json({
         success: true,
