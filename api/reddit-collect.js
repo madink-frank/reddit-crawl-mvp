@@ -32,35 +32,42 @@ module.exports = async (req, res) => {
     results.debug_log.push(`🚀 Starting RSS collection from ${subreddits.length} subreddits`);
     results.debug_log.push(`Target limit: ${limit} posts`);
     
-    // XML 파서 함수 (간단한 정규식 기반)
-    function parseRSSItem(xmlText) {
+    // Atom 피드 파서 함수 (Reddit은 Atom 형식 사용)
+    function parseAtomFeed(xmlText) {
       const items = [];
-      const itemRegex = /<item>(.*?)<\/item>/gs;
+      const entryRegex = /<entry>(.*?)<\/entry>/gs;
       let match;
       
-      while ((match = itemRegex.exec(xmlText)) !== null) {
-        const itemXml = match[1];
+      while ((match = entryRegex.exec(xmlText)) !== null) {
+        const entryXml = match[1];
         
-        const title = (itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || [])[1];
-        const link = (itemXml.match(/<link>(.*?)<\/link>/) || [])[1];
-        const description = (itemXml.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || [])[1];
-        const pubDate = (itemXml.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1];
+        // Atom 형식으로 파싱
+        const titleMatch = entryXml.match(/<title[^>]*>(.*?)<\/title>/s);
+        const linkMatch = entryXml.match(/<link[^>]*href="([^"]*)"[^>]*>/);
+        const idMatch = entryXml.match(/<id[^>]*>(.*?)<\/id>/);
+        const authorMatch = entryXml.match(/<author><name>([^<]*)<\/name>/);
+        const publishedMatch = entryXml.match(/<published[^>]*>(.*?)<\/published>/);
         
-        if (title && link) {
-          // Reddit 링크에서 정보 추출
-          const redditMatch = link.match(/reddit\.com\/r\/(\w+)\/comments\/(\w+)\//);
+        if (titleMatch && titleMatch[1] && linkMatch && linkMatch[1]) {
+          const title = titleMatch[1].trim();
+          const link = linkMatch[1];
+          const postId = idMatch ? idMatch[1].replace('t3_', '') : 'unknown';
+          const author = authorMatch ? authorMatch[1].replace('/u/', '') : 'unknown';
+          const published = publishedMatch ? publishedMatch[1] : '';
+          
+          // Reddit 링크에서 서브레딧 추출
+          const redditMatch = link.match(/reddit\.com\/r\/(\w+)\//);
           const subreddit = redditMatch ? redditMatch[1] : 'unknown';
-          const postId = redditMatch ? redditMatch[2] : 'unknown';
           
           items.push({
             reddit_post_id: postId,
-            title: title.trim(),
+            title: title,
             subreddit: subreddit,
+            author: author,
             url: link,
-            description: description ? description.trim() : '',
-            pub_date: pubDate,
             permalink: link,
-            source: 'rss'
+            published: published,
+            source: 'atom'
           });
         }
       }
@@ -78,10 +85,13 @@ module.exports = async (req, res) => {
         const rssUrl = `https://www.reddit.com/r/${subreddit}/hot/.rss?limit=10`;
         results.debug_log.push(`Fetching RSS: ${rssUrl}`);
         
-        // RSS 피드 가져오기
+        // RSS 피드 가져오기 (브라우저 User-Agent 사용)
         const response = await fetch(rssUrl, {
           headers: {
-            'User-Agent': 'reddit-rss-collector/1.0.0'
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache'
           }
         });
         
@@ -95,9 +105,9 @@ module.exports = async (req, res) => {
         const rssText = await response.text();
         results.debug_log.push(`RSS text received, length: ${rssText.length}`);
         
-        // RSS XML 파싱
-        const items = parseRSSItem(rssText);
-        results.debug_log.push(`📝 Parsed ${items.length} items from RSS`);
+        // Atom XML 파싱
+        const items = parseAtomFeed(rssText);
+        results.debug_log.push(`📝 Parsed ${items.length} items from Atom feed`);
         
         // 게시글 추가
         for (const item of items) {
@@ -126,19 +136,19 @@ module.exports = async (req, res) => {
       }
     }
     
-    results.debug_log.push(`🏁 RSS collection complete: ${results.collected_posts} posts collected`);
+    results.debug_log.push(`🏁 Atom feed collection complete: ${results.collected_posts} posts collected`);
     
     return res.status(200).json({
       success: true,
       data: {
         collected_posts: results.collected_posts,
-        message: `RSS collection completed: ${results.collected_posts} posts collected`,
+        message: `Atom feed collection completed: ${results.collected_posts} posts collected`,
         subreddits_processed: subreddits,
         posts: results.posts,
         timestamp: results.timestamp,
         next_steps: results.collected_posts > 0 ? 'Ready for AI processing' : 'No posts collected - check debug info',
         debug_info: results.debug_log,
-        method: 'RSS'
+        method: 'Atom'
       }
     });
     
@@ -148,7 +158,7 @@ module.exports = async (req, res) => {
       error: error.message,
       stack: error.stack,
       timestamp: new Date().toISOString(),
-      method: 'RSS'
+      method: 'Atom'
     });
   }
 };
