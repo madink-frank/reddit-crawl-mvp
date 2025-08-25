@@ -75,37 +75,40 @@ module.exports = async (req, res) => {
     try {
       let totalCollected = 0;
       const collectedPosts = [];
+      const debugInfo = [];
       
       // 각 서브레딧에서 게시글 수집
       for (const subreddit of subreddits) {
         try {
-          console.log(`Collecting from r/${subreddit}...`);
+          debugInfo.push(`Starting collection from r/${subreddit}...`);
           
           // Reddit JSON API 사용 (인증 불필요)
           const redditUrl = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${Math.ceil(limit / subreddits.length)}`;
+          debugInfo.push(`URL: ${redditUrl}`);
           
           const redditData = await fetchRedditData(redditUrl);
+          debugInfo.push(`API call completed for r/${subreddit}`);
           
           if (redditData && redditData.data && redditData.data.children) {
-            console.log(`✅ Found ${redditData.data.children.length} posts in r/${subreddit}`);
+            debugInfo.push(`✅ Found ${redditData.data.children.length} posts in r/${subreddit}`);
             for (const child of redditData.data.children) {
               const post = child.data;
               
               // NSFW 필터링
               if (post.over_18) {
-                console.log(`⏭️ Skipping NSFW post: ${post.title}`);
+                debugInfo.push(`⏭️ Skipping NSFW post: ${post.title}`);
                 continue;
               }
               
               // 스티키 게시글 제외
               if (post.stickied) {
-                console.log(`⏭️ Skipping stickied post: ${post.title}`);
+                debugInfo.push(`⏭️ Skipping stickied post: ${post.title}`);
                 continue;
               }
               
               // 삭제된 게시글 제외
               if (post.removed_by_category || !post.title) {
-                console.log(`⏭️ Skipping removed/deleted post`);
+                debugInfo.push(`⏭️ Skipping removed/deleted post`);
                 continue;
               }
               
@@ -128,15 +131,19 @@ module.exports = async (req, res) => {
               
               collectedPosts.push(postData);
               totalCollected++;
-              console.log(`📝 Collected post ${totalCollected}: "${post.title}" (score: ${post.score})`);
+              debugInfo.push(`📝 Collected post ${totalCollected}: "${post.title}" (score: ${post.score})`);
               
               if (totalCollected >= limit) {
-                console.log(`🎯 Reached target limit of ${limit} posts`);
+                debugInfo.push(`🎯 Reached target limit of ${limit} posts`);
                 break;
               }
             }
           } else {
-            console.log(`❌ No data found for r/${subreddit} - API response structure:`, JSON.stringify(redditData, null, 2));
+            debugInfo.push(`❌ No data found for r/${subreddit}`);
+            debugInfo.push(`API response keys: ${Object.keys(redditData || {}).join(', ')}`);
+            if (redditData) {
+              debugInfo.push(`Response sample: ${JSON.stringify(redditData).substring(0, 200)}...`);
+            }
           }
           
           if (totalCollected >= limit) {
@@ -144,13 +151,13 @@ module.exports = async (req, res) => {
           }
           
         } catch (subredditError) {
-          console.error(`❌ Error collecting from r/${subreddit}:`, subredditError.message);
-          console.error('Full error:', subredditError);
+          debugInfo.push(`❌ Error collecting from r/${subreddit}: ${subredditError.message}`);
+          debugInfo.push(`Error stack: ${subredditError.stack}`);
           continue;
         }
       }
       
-      console.log(`🏁 Collection completed. Total posts collected: ${totalCollected}`);
+      debugInfo.push(`🏁 Collection completed. Total posts collected: ${totalCollected}`);
       
       return res.status(200).json({
         success: true,
@@ -160,7 +167,8 @@ module.exports = async (req, res) => {
           subreddits_processed: subreddits,
           posts: collectedPosts,
           timestamp: new Date().toISOString(),
-          next_steps: 'Ready for AI processing'
+          next_steps: 'Ready for AI processing',
+          debug_info: debugInfo
         }
       });
       
