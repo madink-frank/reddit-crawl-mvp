@@ -1,24 +1,9 @@
+// 완전히 새로운 Reddit 수집 API - RSS 기반
 module.exports = async (req, res) => {
-  // Enhanced CORS headers for Ghost dashboard integration
-  const allowedOrigins = [
-    'https://american-trends.ghost.io',
-    'https://www.american-trends.ghost.io',
-    'http://localhost:3000',
-    'http://localhost:8000',
-    'http://localhost:8083'
-  ];
-  
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', '*'); // Fallback for development
-  }
-  
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Requested-With');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Max-Age', '86400');
+  // CORS 설정
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -29,169 +14,141 @@ module.exports = async (req, res) => {
   }
   
   try {
-    const { subreddits = ['programming', 'technology', 'webdev'], limit = 10 } = req.body || {};
+    // 요청 파라미터 파싱
+    const body = req.body || {};
+    const subreddits = body.subreddits || ['programming', 'technology', 'webdev'];
+    const limit = Math.min(body.limit || 10, 25);
     
-    // Reddit 공개 JSON API 사용 (자격 증명 불필요)
-    console.log(`Starting Reddit collection from subreddits: ${subreddits.join(', ')}`);
-    console.log(`Target limit: ${limit} posts`);
+    const results = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      requested_subreddits: subreddits,
+      requested_limit: limit,
+      collected_posts: 0,
+      posts: [],
+      debug_log: []
+    };
     
-    // Helper function to fetch Reddit data (정의를 먼저 해야 함)
-    function fetchRedditData(url) {
-      return new Promise((resolve, reject) => {
-        const https = require('https');
-        const options = {
-          headers: {
-            'User-Agent': 'reddit-ghost-publisher/1.0.0 (by /u/reddit-publisher)'
-          }
-        };
-        
-        console.log(`Fetching Reddit data from: ${url}`);
-        
-        https.get(url, options, (response) => {
-          let data = '';
-          
-          response.on('data', (chunk) => {
-            data += chunk;
-          });
-          
-          response.on('end', () => {
-            try {
-              const jsonData = JSON.parse(data);
-              console.log(`Reddit API response received, status: ${response.statusCode}`);
-              resolve(jsonData);
-            } catch (parseError) {
-              console.error('JSON parse error:', parseError.message);
-              reject(parseError);
-            }
-          });
-        }).on('error', (error) => {
-          console.error('HTTPS request error:', error.message);
-          reject(error);
-        });
-      });
-    }
+    results.debug_log.push(`🚀 Starting RSS collection from ${subreddits.length} subreddits`);
+    results.debug_log.push(`Target limit: ${limit} posts`);
     
-    // 실제 Reddit API 호출 구현
-    try {
-      let totalCollected = 0;
-      const collectedPosts = [];
-      const debugInfo = [];
+    // XML 파서 함수 (간단한 정규식 기반)
+    function parseRSSItem(xmlText) {
+      const items = [];
+      const itemRegex = /<item>(.*?)<\/item>/gs;
+      let match;
       
-      // 각 서브레딧에서 게시글 수집
-      for (const subreddit of subreddits) {
-        try {
-          debugInfo.push(`Starting collection from r/${subreddit}...`);
+      while ((match = itemRegex.exec(xmlText)) !== null) {
+        const itemXml = match[1];
+        
+        const title = (itemXml.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) || [])[1];
+        const link = (itemXml.match(/<link>(.*?)<\/link>/) || [])[1];
+        const description = (itemXml.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) || [])[1];
+        const pubDate = (itemXml.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1];
+        
+        if (title && link) {
+          // Reddit 링크에서 정보 추출
+          const redditMatch = link.match(/reddit\.com\/r\/(\w+)\/comments\/(\w+)\//);
+          const subreddit = redditMatch ? redditMatch[1] : 'unknown';
+          const postId = redditMatch ? redditMatch[2] : 'unknown';
           
-          // Reddit JSON API 사용 (인증 불필요)
-          const redditUrl = `https://www.reddit.com/r/${subreddit}/hot.json?limit=${Math.ceil(limit / subreddits.length)}`;
-          debugInfo.push(`URL: ${redditUrl}`);
-          
-          const redditData = await fetchRedditData(redditUrl);
-          debugInfo.push(`API call completed for r/${subreddit}`);
-          
-          if (redditData && redditData.data && redditData.data.children) {
-            debugInfo.push(`✅ Found ${redditData.data.children.length} posts in r/${subreddit}`);
-            for (const child of redditData.data.children) {
-              const post = child.data;
-              
-              // NSFW 필터링
-              if (post.over_18) {
-                debugInfo.push(`⏭️ Skipping NSFW post: ${post.title}`);
-                continue;
-              }
-              
-              // 스티키 게시글 제외
-              if (post.stickied) {
-                debugInfo.push(`⏭️ Skipping stickied post: ${post.title}`);
-                continue;
-              }
-              
-              // 삭제된 게시글 제외
-              if (post.removed_by_category || !post.title) {
-                debugInfo.push(`⏭️ Skipping removed/deleted post`);
-                continue;
-              }
-              
-              const postData = {
-                reddit_post_id: post.id,
-                title: post.title,
-                subreddit: post.subreddit,
-                author: post.author,
-                score: post.score,
-                num_comments: post.num_comments,
-                created_utc: post.created_utc,
-                url: post.url,
-                selftext: post.selftext || '',
-                permalink: `https://reddit.com${post.permalink}`,
-                over_18: post.over_18,
-                thumbnail: post.thumbnail !== 'self' && post.thumbnail !== 'default' ? post.thumbnail : null,
-                domain: post.domain,
-                is_video: post.is_video || false
-              };
-              
-              collectedPosts.push(postData);
-              totalCollected++;
-              debugInfo.push(`📝 Collected post ${totalCollected}: "${post.title}" (score: ${post.score})`);
-              
-              if (totalCollected >= limit) {
-                debugInfo.push(`🎯 Reached target limit of ${limit} posts`);
-                break;
-              }
-            }
-          } else {
-            debugInfo.push(`❌ No data found for r/${subreddit}`);
-            debugInfo.push(`API response keys: ${Object.keys(redditData || {}).join(', ')}`);
-            if (redditData) {
-              debugInfo.push(`Response sample: ${JSON.stringify(redditData).substring(0, 200)}...`);
-            }
-          }
-          
-          if (totalCollected >= limit) {
-            break;
-          }
-          
-        } catch (subredditError) {
-          debugInfo.push(`❌ Error collecting from r/${subreddit}: ${subredditError.message}`);
-          debugInfo.push(`Error stack: ${subredditError.stack}`);
-          continue;
+          items.push({
+            reddit_post_id: postId,
+            title: title.trim(),
+            subreddit: subreddit,
+            url: link,
+            description: description ? description.trim() : '',
+            pub_date: pubDate,
+            permalink: link,
+            source: 'rss'
+          });
         }
       }
       
-      debugInfo.push(`🏁 Collection completed. Total posts collected: ${totalCollected}`);
-      
-      return res.status(200).json({
-        success: true,
-        data: {
-          collected_posts: totalCollected,
-          message: 'Reddit collection completed successfully',
-          subreddits_processed: subreddits,
-          posts: collectedPosts,
-          timestamp: new Date().toISOString(),
-          next_steps: 'Ready for AI processing',
-          debug_info: debugInfo
-        }
-      });
-      
-    } catch (apiError) {
-      console.error('Reddit API error:', apiError);
-      
-      // Reddit API 실패 시 에러 반환
-      return res.status(500).json({
-        success: false,
-        error: 'Reddit API call failed',
-        details: apiError.message,
-        subreddits_requested: subreddits,
-        timestamp: new Date().toISOString(),
-        message: 'Check Reddit API credentials and rate limits'
-      });
+      return items;
     }
     
+    // 각 서브레딧에서 RSS 데이터 수집
+    for (let i = 0; i < subreddits.length; i++) {
+      const subreddit = subreddits[i];
+      results.debug_log.push(`📡 Processing subreddit ${i + 1}/${subreddits.length}: r/${subreddit}`);
+      
+      try {
+        // Reddit RSS URL
+        const rssUrl = `https://www.reddit.com/r/${subreddit}/hot/.rss?limit=10`;
+        results.debug_log.push(`Fetching RSS: ${rssUrl}`);
+        
+        // RSS 피드 가져오기
+        const response = await fetch(rssUrl, {
+          headers: {
+            'User-Agent': 'reddit-rss-collector/1.0.0'
+          }
+        });
+        
+        results.debug_log.push(`RSS response status: ${response.status}`);
+        
+        if (!response.ok) {
+          results.debug_log.push(`❌ RSS HTTP error: ${response.status} ${response.statusText}`);
+          continue;
+        }
+        
+        const rssText = await response.text();
+        results.debug_log.push(`RSS text received, length: ${rssText.length}`);
+        
+        // RSS XML 파싱
+        const items = parseRSSItem(rssText);
+        results.debug_log.push(`📝 Parsed ${items.length} items from RSS`);
+        
+        // 게시글 추가
+        for (const item of items) {
+          if (results.collected_posts >= limit) {
+            results.debug_log.push(`🎯 Reached limit of ${limit} posts`);
+            break;
+          }
+          
+          // 중복 체크 (같은 post_id)
+          if (results.posts.some(p => p.reddit_post_id === item.reddit_post_id)) {
+            results.debug_log.push(`⏭️ Skipping duplicate: ${item.title.substring(0, 50)}...`);
+            continue;
+          }
+          
+          results.posts.push(item);
+          results.collected_posts++;
+          results.debug_log.push(`✅ Added: "${item.title.substring(0, 50)}..." from r/${item.subreddit}`);
+        }
+        
+      } catch (subredditError) {
+        results.debug_log.push(`❌ Error with r/${subreddit}: ${subredditError.message}`);
+      }
+      
+      if (results.collected_posts >= limit) {
+        break;
+      }
+    }
+    
+    results.debug_log.push(`🏁 RSS collection complete: ${results.collected_posts} posts collected`);
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        collected_posts: results.collected_posts,
+        message: `RSS collection completed: ${results.collected_posts} posts collected`,
+        subreddits_processed: subreddits,
+        posts: results.posts,
+        timestamp: results.timestamp,
+        next_steps: results.collected_posts > 0 ? 'Ready for AI processing' : 'No posts collected - check debug info',
+        debug_info: results.debug_log,
+        method: 'RSS'
+      }
+    });
+    
   } catch (error) {
-    console.error('Reddit collection error:', error);
     return res.status(500).json({
       success: false,
       error: error.message,
-      fallback_action: 'Check Reddit API credentials and try again'
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+      method: 'RSS'
     });
   }
 };
