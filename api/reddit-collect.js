@@ -150,7 +150,7 @@ module.exports = async (req, res) => {
         }
       }
       
-
+      console.log(`🏁 Collection completed. Total posts collected: ${totalCollected}`);
       
       return res.status(200).json({
         success: true,
